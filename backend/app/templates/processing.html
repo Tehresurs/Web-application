@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Техресурс - Обработка отчетов</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body>
+<div class="app">
+    <aside class="sidebar">
+        <div class="logo">
+            <img class="brand-logo" src="/static/images/techresurs-logo.png" alt="Техресурс"><div class="logo-mark logo-fallback">T</div>
+            <div><strong>Техресурс</strong><small>СИСТЕМА КОНТРОЛЯ</small></div>
+        </div>
+        <nav class="navigation" aria-label="Основная навигация">
+            <button class="nav-item active"><span>▣</span>Обработка отчётов</button>
+            <button class="nav-item"><span>♙</span>Сотрудники</button>
+            <button class="nav-item"><span>◇</span>Объекты строительства</button>
+            <button class="nav-item"><span>▱</span>Экипажи</button>
+            <button class="nav-item"><span>≡</span>Логи</button><button class="nav-item"><span>⚙</span>Настройки</button>
+        </nav>
+        <div class="sidebar-footer"><strong>Техресурс</strong><br><small>Система контроля отчётов</small><div class="version">v 1.0.0</div></div>
+    </aside>
+
+    <main class="main">
+        <header class="page-header">
+            <div><h1>Обработка отчетов</h1><p>Загрузка и проверка ежедневных Word-отчетов</p></div>
+            <div class="header-meta"><div class="system-status"><span></span>Система готова</div><div class="header-date" id="headerDate">—</div><div class="header-user">◉ Администратор⌄</div></div>
+        </header>
+
+        <section class="card upload-card">
+
+            <div class="folder-selector">
+                <div class="folder-icon">▰</div>
+                <div class="folder-content">
+                    <h3>Папка с ежедневными отчетами</h3>
+                    <p>Укажите папку, содержащую Word-отчёты (*.docx)</p>
+                    <div class="folder-path-row">
+                        <input type="text" id="folderPath" class="folder-path" value="C:\Projects\excel-ai-agent\backend\input" placeholder="C:\Путь\к\папке\с\отчётами">
+                        <button type="button" class="secondary-button" id="checkFolderButton">▰&nbsp; Выбрать папку</button>
+                    </div>
+                    <div class="folder-info-box"><div class="folder-info" id="folderInfo">Папка ещё не проверена</div><div class="last-check" id="lastCheck">Последняя проверка: —</div></div>
+                </div>
+            </div>
+            <div class="actions"><button class="primary-button" id="parseButton" disabled>▶&nbsp; Запустить проверку</button></div>
+        </section>
+
+        <section class="card results-card" id="results">
+            <div class="results-header"><div><h2>Результат парсинга</h2><p>Промежуточный результат обработки отчётов</p></div><div class="result-actions"><button class="secondary-button" id="downloadHtmlButton" disabled>⇩ Скачать промежуточный отчёт (HTML)</button><button class="secondary-button" id="exportExcelButton" disabled>▦ Выгрузить в Excel</button><button class="secondary-button danger-button" id="clearResultsButton">⌫ Очистить результаты</button></div></div>
+            <div class="statistics"><div class="stat"><span class="stat-number">—</span><span class="stat-label">Отчетов</span></div><div class="stat success"><span class="stat-number">—</span><span class="stat-label">Корректно</span></div><div class="stat warning"><span class="stat-number">—</span><span class="stat-label">Требуют внимания</span></div><div class="stat error"><span class="stat-number">—</span><span class="stat-label">Ошибки</span></div></div>
+            <div class="result-toolbar">
+<input id="searchInput" type="search" placeholder="⌕  Поиск по ФИО, объекту, подрядчику..." aria-label="Поиск">
+<select id="statusFilter"><option value="all">Все результаты</option><option value="problem">Требуют внимания</option><option value="new">Только новые</option><option value="ok">Только корректные</option><option value="error">Только ошибки</option></select>
+<select id="dateFilter"><option value="all">Все даты</option></select>
+<button class="secondary-button" id="refreshButton">↻ Обновить</button>
+</div>
+            <div class="table-wrapper"><table><thead><tr><th>№</th><th>ФИО</th><th>Должность</th><th>Дата отчёта</th><th>Объект</th><th>Генподрядчик</th><th>Субподрядчик</th><th>Статус</th><th>Действия</th></tr></thead><tbody id="resultTable"><tr class="empty-row"><td colspan="9">Загрузите Word-отчеты и запустите проверку</td></tr></tbody></table></div>
+            <template id="viewButtonTemplate">
+                <button type="button" class="view-button" data-report-index="0" title="Открыть" aria-label="Открыть отчёт">👁</button>
+            </template>
+        </section>
+    </main>
+</div>
+
+<div class="details-overlay" id="detailsOverlay" hidden></div>
+<aside class="details-panel" id="detailsPanel">
+    <div class="details-header">
+        <div><span class="details-type" id="detailsType">Проверка отчёта</span><h2 id="detailsTitle">Результат обработки</h2></div>
+        <button type="button" class="details-close" id="detailsClose" aria-label="Закрыть">×</button>
+    </div>
+    <div class="details-content">
+        <section class="details-section">
+            <h3>Информация из отчёта</h3>
+            <div class="details-grid">
+                <span>Файл</span><strong id="detailsFile">—</strong>
+                <span>ФИО</span><strong id="detailsEmployee">—</strong>
+                <span>Должность</span><strong id="detailsPosition">—</strong>
+                <span>Дата</span><strong id="detailsDate">—</strong>
+                <span>Объект</span><strong id="detailsObject">—</strong>
+                <span>Генподрядчик</span><strong id="detailsGeneralContractor">—</strong>
+                <span>Субподрядчик</span><strong id="detailsSubcontractor">—</strong>
+            </div>
+        </section>
+        <section class="details-section"><h3>Проверка по базе</h3><div class="database-status" id="databaseStatus">—</div></section>
+        <section class="details-section" id="newObjectSection" hidden>
+            <h3>Добавление объекта</h3>
+            <label class="form-label">Наименование объекта<textarea id="newObjectName" rows="4"></textarea></label>
+            <label class="form-label">Категория объекта<select id="objectCategory"><option value="">Выберите категорию</option></select></label>
+            <label class="form-label">Производственные организации (ПО)<select id="objectPo" multiple size="5"></select></label>
+            <label class="form-label">Комментарий<textarea id="objectComment" rows="3" placeholder="Необязательно"></textarea></label>
+        </section>
+    </div>
+    <div class="details-footer"><button type="button" class="secondary-button" id="detailsCancel">Закрыть</button><button type="button" class="primary-button" id="addObjectButton" hidden>Добавить в базу</button></div>
+</aside>
+
+<div class="modal-overlay" id="modal" hidden><div class="modal"><div class="modal-header"><h2>Требуется согласование</h2><button class="modal-close" id="modalClose" aria-label="Закрыть">×</button></div><div class="modal-body"><div class="source-value"><span>Значение из Word</span><strong>Трофимов Сергей Николаевич</strong></div><h3>Возможное совпадение</h3><label class="candidate"><input type="radio" name="candidate" checked><div><strong>Трофимов Сергей Николаевич</strong><span>Инженер СК</span></div><b>98%</b></label></div><div class="modal-footer"><button class="secondary-button">Добавить нового</button><button class="primary-button">Связать</button></div></div></div>
+<script src="/static/js/processing.js"></script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Dependencies and generated files
+.venv/
+venv/
+node_modules/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.next/
+*.log
+*.tsbuildinfo
+
+# Local business data and reports
+/backend/input/
+/backend/output/
+/data/
+/storage/
+/backend/app/import_employees.py
+*.db
+*.sqlite
+*.sqlite3
+
+# Editor and OS files
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store
