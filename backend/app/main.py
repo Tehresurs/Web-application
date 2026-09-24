@@ -9,6 +9,37 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from app.services.processing_service import list_report_files, process_folder
+from app.repositories.contractors import (
+    get_contractors,
+    create_contractor,
+    update_contractor,
+    delete_contractor,
+)
+from app.repositories.employees import (
+    get_crews,
+    create_crew,
+    update_crew,
+    delete_crew,
+    get_positions,
+    get_employees,
+    create_employee,
+    update_employee,
+    delete_employee,
+    create_position,
+    rename_position,
+    delete_position,
+)
+from app.repositories.objects import (
+    create_object,
+    get_object_categories,
+    get_po_types,
+    create_subcategory,
+    rename_subcategory,
+    delete_subcategory,
+    create_po_type,
+    rename_po_type,
+    delete_po_type,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -34,16 +65,23 @@ async def processing_page(request: Request):
 
 @app.get("/api/select-folder")
 def select_folder():
-    root = tk.Tk()
+    root = None
     try:
+        root = tk.Tk()
         root.withdraw()
         root.attributes("-topmost", True)
         folder_path = filedialog.askdirectory(
             parent=root,
             title="Выберите папку с Word-отчётами",
         )
+    except tk.TclError:
+        return JSONResponse(status_code=503, content={
+            "status": "error",
+            "message": "Не удалось открыть выбор папки. Введите путь вручную в поле папки.",
+        })
     finally:
-        root.destroy()
+        if root is not None:
+            root.destroy()
 
     if not folder_path:
         return {"status": "cancelled", "path": None}
@@ -87,6 +125,47 @@ class ProcessFolderRequest(BaseModel):
     path: str = Field(min_length=1)
 
 
+class CreateObjectRequest(BaseModel):
+    name: str = Field(min_length=1)
+    category_id: int | None = None
+    po_ids: list[int] = Field(default_factory=list)
+
+
+class CreateSubcategoryRequest(BaseModel):
+    name: str = Field(min_length=1)
+
+
+class RenameSubcategoryRequest(BaseModel):
+    name: str = Field(min_length=1)
+
+
+class PoTypeRequest(BaseModel):
+    name: str = Field(min_length=1)
+
+
+class CrewRequest(BaseModel):
+    driver_full_name: str = Field(min_length=1)
+    driver_phone: str | None = None
+    vehicle_make: str | None = None
+    vehicle_plate: str | None = None
+
+
+class EmployeeRequest(BaseModel):
+    full_name: str = Field(min_length=1)
+    position_id: int | None = None
+    phone: str | None = None
+    crew_id: int | None = None
+
+
+class ContractorRequest(BaseModel):
+    name: str = Field(min_length=1)
+
+
+class PositionRequest(BaseModel):
+    name: str = Field(min_length=1)
+    action_description: str | None = None
+
+
 @app.post("/api/process-folder")
 def process_reports(payload: ProcessFolderRequest):
     if not payload.path.strip():
@@ -101,3 +180,479 @@ def process_reports(payload: ProcessFolderRequest):
             "message": "Ошибка обработки отчётов",
             "details": str(error),
         })
+
+
+@app.get("/api/object-categories")
+def object_categories():
+    return {
+        "status": "ok",
+        "items": get_object_categories(),
+    }
+
+
+@app.get("/api/po-types")
+def po_types():
+    return {
+        "status": "ok",
+        "items": get_po_types(),
+    }
+
+
+@app.post("/api/objects")
+def add_object(payload: CreateObjectRequest):
+    try:
+        new_object = create_object(
+            name=payload.name,
+            category_id=payload.category_id,
+            po_ids=payload.po_ids,
+        )
+        return {
+            "status": "ok",
+            "object": new_object,
+        }
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "status": "error",
+                "message": str(error),
+            },
+        )
+    except Exception as error:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": "Не удалось добавить объект",
+                "details": str(error),
+            },
+        )
+
+
+@app.post("/api/object-categories/{parent_id}/children")
+def add_object_subcategory(
+    parent_id: int,
+    payload: CreateSubcategoryRequest,
+):
+    try:
+        item = create_subcategory(
+            parent_id=parent_id,
+            name=payload.name,
+        )
+
+        return {
+            "status": "ok",
+            "item": item,
+        }
+
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "status": "error",
+                "message": str(error),
+            },
+        )
+
+
+@app.patch("/api/object-categories/{category_id}")
+def update_object_subcategory(
+    category_id: int,
+    payload: RenameSubcategoryRequest,
+):
+    try:
+        item = rename_subcategory(
+            category_id=category_id,
+            name=payload.name,
+        )
+
+        return {
+            "status": "ok",
+            "item": item,
+        }
+
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "status": "error",
+                "message": str(error),
+            },
+        )
+
+
+@app.delete("/api/object-categories/{category_id}")
+def remove_object_subcategory(category_id: int):
+    try:
+        result = delete_subcategory(category_id)
+
+        return {
+            "status": "ok",
+            **result,
+        }
+
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "status": "error",
+                "message": str(error),
+            },
+        )
+
+
+@app.post("/api/po-types")
+def add_po_type(payload: PoTypeRequest):
+    try:
+        item = create_po_type(payload.name)
+
+        return {
+            "status": "ok",
+            "item": item,
+        }
+
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "status": "error",
+                "message": str(error),
+            },
+        )
+
+
+@app.patch("/api/po-types/{po_id}")
+def update_po_type(
+    po_id: int,
+    payload: PoTypeRequest,
+):
+    try:
+        item = rename_po_type(
+            po_id=po_id,
+            name=payload.name,
+        )
+
+        return {
+            "status": "ok",
+            "item": item,
+        }
+
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "status": "error",
+                "message": str(error),
+            },
+        )
+
+
+@app.delete("/api/po-types/{po_id}")
+def remove_po_type(po_id: int):
+    try:
+        result = delete_po_type(po_id)
+
+        return {
+            "status": "ok",
+            **result,
+        }
+
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "status": "error",
+                "message": str(error),
+            },
+        )
+
+
+@app.get("/api/positions")
+def positions():
+    return {
+        "status": "ok",
+        "items": get_positions(),
+    }
+
+
+@app.post("/api/positions")
+def add_position(payload: PositionRequest):
+    try:
+        item = create_position(
+            name=payload.name,
+            action_description=payload.action_description,
+        )
+
+        return {
+            "status": "ok",
+            "item": item,
+        }
+
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "status": "error",
+                "message": str(error),
+            },
+        )
+
+
+@app.patch("/api/positions/{position_id}")
+def update_position(
+    position_id: int,
+    payload: PositionRequest,
+):
+    try:
+        item = rename_position(
+            position_id=position_id,
+            name=payload.name,
+            action_description=payload.action_description,
+        )
+
+        return {
+            "status": "ok",
+            "item": item,
+        }
+
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "status": "error",
+                "message": str(error),
+            },
+        )
+
+
+@app.delete("/api/positions/{position_id}")
+def remove_position(position_id: int):
+    try:
+        result = delete_position(position_id)
+
+        return {
+            "status": "ok",
+            **result,
+        }
+
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "status": "error",
+                "message": str(error),
+            },
+        )
+
+
+@app.get("/api/employees")
+def employees():
+    return {
+        "status": "ok",
+        "items": get_employees(),
+    }
+
+
+@app.post("/api/employees")
+def add_employee(payload: EmployeeRequest):
+    try:
+        employee_id = create_employee(
+            full_name=payload.full_name,
+            position_id=payload.position_id,
+            phone=payload.phone,
+            crew_id=payload.crew_id,
+        )
+
+        return {
+            "status": "ok",
+            "id": employee_id,
+        }
+
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "status": "error",
+                "message": str(error),
+            },
+        )
+
+
+@app.patch("/api/employees/{employee_id}")
+def edit_employee(
+    employee_id: int,
+    payload: EmployeeRequest,
+):
+    try:
+        update_employee(
+            employee_id=employee_id,
+            full_name=payload.full_name,
+            position_id=payload.position_id,
+            phone=payload.phone,
+            crew_id=payload.crew_id,
+        )
+
+        return {
+            "status": "ok",
+            "id": employee_id,
+        }
+
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "status": "error",
+                "message": str(error),
+            },
+        )
+
+
+@app.delete("/api/employees/{employee_id}")
+def remove_employee(employee_id: int):
+    try:
+        return {
+            "status": "ok",
+            **delete_employee(employee_id),
+        }
+
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "status": "error",
+                "message": str(error),
+            },
+        )
+
+
+@app.get("/api/crews")
+def crews():
+    return {
+        "status": "ok",
+        "items": get_crews(),
+    }
+
+
+@app.post("/api/crews")
+def add_crew(payload: CrewRequest):
+    try:
+        crew_id = create_crew(
+            driver_full_name=payload.driver_full_name,
+            driver_phone=payload.driver_phone,
+            vehicle_make=payload.vehicle_make,
+            vehicle_plate=payload.vehicle_plate,
+        )
+
+        return {
+            "status": "ok",
+            "id": crew_id,
+        }
+
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "status": "error",
+                "message": str(error),
+            },
+        )
+
+
+@app.patch("/api/crews/{crew_id}")
+def edit_crew(
+    crew_id: int,
+    payload: CrewRequest,
+):
+    try:
+        update_crew(
+            crew_id=crew_id,
+            driver_full_name=payload.driver_full_name,
+            driver_phone=payload.driver_phone,
+            vehicle_make=payload.vehicle_make,
+            vehicle_plate=payload.vehicle_plate,
+        )
+
+        return {
+            "status": "ok",
+            "id": crew_id,
+        }
+
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "status": "error",
+                "message": str(error),
+            },
+        )
+
+
+@app.delete("/api/crews/{crew_id}")
+def remove_crew(crew_id: int):
+    try:
+        return {
+            "status": "ok",
+            **delete_crew(crew_id),
+        }
+
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "status": "error",
+                "message": str(error),
+            },
+        )
+
+
+@app.get("/api/contractors")
+def contractors():
+    return {
+        "status": "ok",
+        "items": get_contractors(),
+    }
+
+
+@app.post("/api/contractors")
+def add_contractor(payload: ContractorRequest):
+    try:
+        return {
+            "status": "ok",
+            "item": create_contractor(payload.name),
+        }
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={"status": "error", "message": str(error)},
+        )
+
+
+@app.patch("/api/contractors/{contractor_id}")
+def edit_contractor(
+    contractor_id: int,
+    payload: ContractorRequest,
+):
+    try:
+        return {
+            "status": "ok",
+            "item": update_contractor(contractor_id, payload.name),
+        }
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={"status": "error", "message": str(error)},
+        )
+
+
+@app.delete("/api/contractors/{contractor_id}")
+def remove_contractor(contractor_id: int):
+    try:
+        return {
+            "status": "ok",
+            **delete_contractor(contractor_id),
+        }
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={"status": "error", "message": str(error)},
+        )

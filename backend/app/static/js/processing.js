@@ -14,16 +14,13 @@ const resultTable = document.getElementById("resultTable");
 const searchInput = document.getElementById('searchInput');
 const statusFilter = document.getElementById('statusFilter');
 const dateFilter=document.getElementById('dateFilter');
-const pageSize=document.getElementById('pageSize');
-const recordsInfo=document.getElementById('recordsInfo');
-const pageButtons=document.getElementById('pageButtons');
 const clearResultsButton=document.getElementById('clearResultsButton');
 const refreshButton=document.getElementById('refreshButton');
 const downloadHtmlButton=document.getElementById('downloadHtmlButton');
-let currentPage=1;
 window.processingReports = [];
 let checkedPath = null;
 let closeDetailsTimer;
+let activeReportIndex = null;
 
 folderPath.addEventListener("input", () => {
     checkedPath = null;
@@ -33,6 +30,30 @@ folderPath.addEventListener("input", () => {
 });
 
 checkFolderButton.addEventListener("click", async () => {
+    checkFolderButton.disabled = true;
+    folderPath.disabled = true;
+    parseButton.disabled = true;
+    try {
+        const response = await fetch("/api/select-folder");
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || "Не удалось открыть выбор папки");
+        if (result.status === "cancelled") return;
+        if (!result.path) throw new Error("Не удалось получить путь к папке");
+        folderPath.value = result.path;
+        await checkFolder();
+    } catch (error) {
+        folderInfo.textContent = error.message || "Ошибка выбора папки";
+        folderInfo.className = "folder-info error";
+    } finally {
+        checkFolderButton.disabled = false;
+        folderPath.disabled = false;
+        parseButton.disabled = checkedPath !== folderPath.value.trim();
+    }
+});
+
+folderPath.addEventListener("change", checkFolder);
+
+async function checkFolder() {
     const path = folderPath.value.trim();
 
     if (!path) {
@@ -71,7 +92,7 @@ checkFolderButton.addEventListener("click", async () => {
     } finally {
         checkFolderButton.disabled = false;
     }
-});
+}
 
 function updateStatistics(result) {
     const numbers = document.querySelectorAll(".stat-number");
@@ -154,7 +175,6 @@ function renderReports() {
 searchInput.addEventListener("input", renderReports);
 statusFilter.addEventListener("change", renderReports);
 dateFilter.addEventListener("change", renderReports);
-pageSize.addEventListener("change", renderReports);
 refreshButton.addEventListener("click", renderReports);
 clearResultsButton.addEventListener("click",()=>{window.processingReports=[];document.querySelectorAll(".stat-number").forEach(n=>n.textContent="—");renderReports();downloadHtmlButton.disabled=true;});
 downloadHtmlButton.addEventListener("click",()=>window.open("/output/intermediate_report.html","_blank"));
@@ -267,6 +287,7 @@ function openDetails(report) {
         databaseStatus.textContent += " " + report.problems.join(". ") + ".";
     }
     document.getElementById("objectCategory").value = "";
+    updateObjectSubcategories();
     document.getElementById("objectPo").selectedIndex = -1;
     document.getElementById("objectComment").value = "";
 
@@ -296,5 +317,882 @@ resultTable.addEventListener("click", event => {
     const report = window.processingReports[index];
     if (!report) return;
 
+    activeReportIndex = index;
     openDetails(report);
+});
+
+
+
+// ===== Add parsed object to database =====
+function removeNewObjectProblems(report) {
+    if (!Array.isArray(report.problems)) return;
+    report.problems = report.problems.filter(problem => {
+        const text = String(problem || "").toLocaleLowerCase("ru");
+        return !text.includes("новый объект") &&
+               !text.includes("объект отсутствует") &&
+               !text.includes("не найден в базе");
+    });
+}
+
+addObjectButton?.addEventListener("click", async () => {
+    if (activeReportIndex === null) return;
+
+    const report = window.processingReports[activeReportIndex];
+    if (!report) return;
+
+    const name = document.getElementById("newObjectName").value.trim();
+    const parent = categoryTree.find(item => String(item.id) === objectCategory.value);
+    const children = parent?.children || [];
+
+    if (!name) {
+        alert("Введите наименование объекта");
+        return;
+    }
+
+    if (!parent) {
+        alert("Выберите категорию объекта");
+        return;
+    }
+
+    let categoryId = Number(parent.id);
+
+    if (children.length) {
+        if (!objectSubcategory.value) {
+            alert("Выберите подкатегорию");
+            return;
+        }
+        categoryId = Number(objectSubcategory.value);
+    }
+
+    const poIds = Array.from(objectPo.selectedOptions)
+        .map(option => Number(option.value))
+        .filter(Number.isFinite);
+
+    const oldText = addObjectButton.textContent;
+    addObjectButton.disabled = true;
+    addObjectButton.textContent = "Добавление...";
+
+    try {
+        const response = await fetch("/api/objects", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                name,
+                category_id: categoryId,
+                po_ids: poIds,
+            }),
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.message || "Не удалось добавить объект");
+        }
+
+        report.object_name = result.object?.name || name;
+        report.object_id = result.object.id;
+        report.object_status = "found";
+        removeNewObjectProblems(report);
+
+        // Если других проблем по отчёту нет, переводим общий статус в OK.
+        const hasEmployeeProblem =
+            report.employee_status === "new" ||
+            report.employee_status === "similar";
+
+        if (!hasEmployeeProblem && (!report.problems || report.problems.length === 0)) {
+            report.status = "ok";
+        }
+
+        updateStatistics({
+            total: window.processingReports.length,
+            ok: window.processingReports.filter(item => item.status === "ok").length,
+            warning: window.processingReports.filter(item => item.status === "warning").length,
+            error: window.processingReports.filter(item => item.status === "error").length,
+        });
+        renderReports();
+
+        document.getElementById("detailsTitle").textContent = "Объект добавлен";
+        const databaseStatus = document.getElementById("databaseStatus");
+        databaseStatus.textContent = "✓ Объект успешно добавлен в базу данных.";
+        databaseStatus.className = "database-status ok";
+        newObjectSection.hidden = true;
+        addObjectButton.hidden = true;
+
+    } catch (error) {
+        const databaseStatus = document.getElementById("databaseStatus");
+        databaseStatus.textContent = error.message || "Ошибка добавления объекта";
+        databaseStatus.className = "database-status error";
+    } finally {
+        addObjectButton.disabled = false;
+        addObjectButton.textContent = oldText;
+    }
+});
+
+// ===== Construction objects / categories =====
+const objectsNavButton = document.getElementById("objectsNavButton");
+const processingPage = document.getElementById("processingPage");
+const objectsPage = document.getElementById("objectsPage");
+const backToProcessingButton = document.getElementById("backToProcessingButton");
+const categoryList = document.getElementById("categoryList");
+const categoryModal = document.getElementById("categoryModal");
+const categoryModalTitle = document.getElementById("categoryModalTitle");
+const categoryModalClose = document.getElementById("categoryModalClose");
+const categoryModalCancel = document.getElementById("categoryModalCancel");
+const categoryModalSave = document.getElementById("categoryModalSave");
+const categoryNameInput = document.getElementById("categoryNameInput");
+const categoryNumberPreview = document.getElementById("categoryNumberPreview");
+const categoryModalError = document.getElementById("categoryModalError");
+const objectCategory = document.getElementById("objectCategory");
+const objectSubcategory = document.getElementById("objectSubcategory");
+const objectSubcategoryLabel = document.getElementById("objectSubcategoryLabel");
+let categoryTree = [];
+let categoryEditId = null;
+let categoryParentId = null;
+
+function setActiveNav(button) {
+    document.querySelectorAll(".nav-item").forEach(item => item.classList.remove("active"));
+    if (button) button.classList.add("active");
+}
+
+async function loadCategories() {
+    const response = await fetch("/api/object-categories");
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || "Не удалось загрузить категории");
+    categoryTree = result.items || [];
+    renderCategoryList();
+    fillObjectCategorySelect();
+}
+
+function categoryNumber(parent, child = null) {
+    return child ? `${parent.sort_order}.${child.sort_order}` : String(parent.sort_order);
+}
+
+function renderCategoryList() {
+    if (!categoryList) return;
+    categoryList.replaceChildren();
+    if (!categoryTree.length) {
+        const empty = document.createElement("div");
+        empty.className = "category-empty";
+        empty.textContent = "Категории не найдены";
+        categoryList.append(empty);
+        return;
+    }
+    categoryTree.forEach(parent => {
+        const row = document.createElement("div");
+        row.className = "category-row";
+        row.innerHTML = `<div class="category-number"></div><div class="category-name"><strong></strong><small></small></div><div class="category-actions"><span class="system-category-lock">🔒 системная</span></div>`;
+        row.querySelector(".category-number").textContent = categoryNumber(parent);
+        row.querySelector("strong").textContent = parent.name;
+        row.querySelector("small").textContent = parent.children?.length ? `${parent.children.length} подкатегории` : "Основная категория";
+        categoryList.append(row);
+
+        (parent.children || []).forEach(child => {
+            const childRow = document.createElement("div");
+            childRow.className = "category-row child";
+            childRow.innerHTML = `<div class="category-number"></div><div class="category-name"><strong></strong></div><div class="category-actions"><button type="button" class="category-icon-button edit-category" title="Переименовать">✎</button><button type="button" class="category-icon-button danger delete-category" title="Удалить">🗑</button></div>`;
+            childRow.querySelector(".category-number").textContent = categoryNumber(parent, child);
+            childRow.querySelector("strong").textContent = child.name;
+            childRow.querySelector(".edit-category").dataset.id = child.id;
+            childRow.querySelector(".delete-category").dataset.id = child.id;
+            categoryList.append(childRow);
+        });
+
+        if (parent.name === "Прочее") {
+            const add = document.createElement("div");
+            add.className = "category-add";
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = "+ Добавить подкатегорию";
+            button.dataset.parentId = parent.id;
+            button.dataset.nextOrder = (parent.children?.length || 0) + 1;
+            add.append(button);
+            categoryList.append(add);
+        }
+    });
+}
+
+function fillObjectCategorySelect() {
+    if (!objectCategory) return;
+    const current = objectCategory.value;
+    objectCategory.innerHTML = '<option value="">Выберите категорию</option>';
+    categoryTree.forEach(parent => {
+        const option = document.createElement("option");
+        option.value = parent.id;
+        option.textContent = `${parent.sort_order}. ${parent.name}`;
+        objectCategory.append(option);
+    });
+    objectCategory.value = current;
+    updateObjectSubcategories();
+}
+
+function updateObjectSubcategories() {
+    if (!objectCategory || !objectSubcategory) return;
+    const parent = categoryTree.find(item => String(item.id) === objectCategory.value);
+    const children = parent?.children || [];
+    objectSubcategory.innerHTML = '<option value="">Выберите подкатегорию</option>';
+    children.forEach(child => {
+        const option = document.createElement("option");
+        option.value = child.id;
+        option.textContent = `${parent.sort_order}.${child.sort_order} ${child.name}`;
+        objectSubcategory.append(option);
+    });
+    objectSubcategoryLabel.hidden = !children.length;
+    if (!children.length) objectSubcategory.value = "";
+}
+
+objectCategory?.addEventListener("change", updateObjectSubcategories);
+
+objectsNavButton?.addEventListener("click", async () => {
+    closeDetails();
+    processingPage.hidden = true;
+    objectsPage.hidden = false;
+    setActiveNav(objectsNavButton);
+    try { await loadCategories(); }
+    catch (error) { categoryList.innerHTML = `<div class="category-empty">${error.message}</div>`; }
+});
+
+backToProcessingButton?.addEventListener("click", () => {
+    objectsPage.hidden = true;
+    processingPage.hidden = false;
+    setActiveNav(document.querySelector(".nav-item:first-child"));
+});
+
+function openCategoryModal({parentId, nextOrder, item = null}) {
+    categoryParentId = parentId || item?.parent_id;
+    categoryEditId = item?.id || null;
+    categoryModalTitle.textContent = item ? "Переименовать подкатегорию" : "Добавить подкатегорию";
+    categoryModalSave.textContent = item ? "Сохранить" : "Добавить";
+    categoryNameInput.value = item?.name || "";
+    categoryNumberPreview.textContent = item ? "Номер подкатегории не изменится." : `Номер будет присвоен автоматически: 6.${nextOrder}`;
+    categoryModalError.hidden = true;
+    categoryModalError.textContent = "";
+    categoryModal.hidden = false;
+    setTimeout(() => categoryNameInput.focus(), 0);
+}
+
+function closeCategoryModal() { categoryModal.hidden = true; }
+categoryModalClose?.addEventListener("click", closeCategoryModal);
+categoryModalCancel?.addEventListener("click", closeCategoryModal);
+categoryModal?.addEventListener("click", e => { if (e.target === categoryModal) closeCategoryModal(); });
+
+categoryList?.addEventListener("click", async event => {
+    const addButton = event.target.closest(".category-add button");
+    if (addButton) {
+        openCategoryModal({parentId: Number(addButton.dataset.parentId), nextOrder: Number(addButton.dataset.nextOrder)});
+        return;
+    }
+    const editButton = event.target.closest(".edit-category");
+    if (editButton) {
+        const id = Number(editButton.dataset.id);
+        const parent = categoryTree.find(p => (p.children || []).some(c => c.id === id));
+        const item = parent?.children.find(c => c.id === id);
+        if (item) openCategoryModal({item});
+        return;
+    }
+    const deleteButton = event.target.closest(".delete-category");
+    if (deleteButton) {
+        const id = Number(deleteButton.dataset.id);
+        const parent = categoryTree.find(p => (p.children || []).some(c => c.id === id));
+        const item = parent?.children.find(c => c.id === id);
+        if (!item || !confirm(`Удалить подкатегорию «${item.name}»?`)) return;
+        try {
+            const response = await fetch(`/api/object-categories/${id}`, {method: "DELETE"});
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message || "Не удалось удалить подкатегорию");
+            await loadCategories();
+        } catch (error) { alert(error.message); }
+    }
+});
+
+categoryModalSave?.addEventListener("click", async () => {
+    const name = categoryNameInput.value.trim();
+    if (!name) {
+        categoryModalError.textContent = "Введите название подкатегории";
+        categoryModalError.hidden = false;
+        return;
+    }
+    categoryModalSave.disabled = true;
+    categoryModalError.hidden = true;
+    try {
+        const url = categoryEditId ? `/api/object-categories/${categoryEditId}` : `/api/object-categories/${categoryParentId}/children`;
+        const response = await fetch(url, {
+            method: categoryEditId ? "PATCH" : "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({name}),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || "Не удалось сохранить подкатегорию");
+        closeCategoryModal();
+        await loadCategories();
+    } catch (error) {
+        categoryModalError.textContent = error.message;
+        categoryModalError.hidden = false;
+    } finally { categoryModalSave.disabled = false; }
+});
+
+// Категории нужны и в правой панели нового объекта.
+loadCategories().catch(() => {});
+
+
+// ===== Construction objects / PO directory =====
+const categoriesTab = document.getElementById("categoriesTab");
+const poTab = document.getElementById("poTab");
+const categoriesPanel = document.getElementById("categoriesPanel");
+const poPanel = document.getElementById("poPanel");
+const poList = document.getElementById("poList");
+const addPoButton = document.getElementById("addPoButton");
+const poModal = document.getElementById("poModal");
+const poModalTitle = document.getElementById("poModalTitle");
+const poModalClose = document.getElementById("poModalClose");
+const poModalCancel = document.getElementById("poModalCancel");
+const poModalSave = document.getElementById("poModalSave");
+const poNameInput = document.getElementById("poNameInput");
+const poModalError = document.getElementById("poModalError");
+const objectPo = document.getElementById("objectPo");
+let poItems = [];
+let poEditId = null;
+
+function activateObjectTab(tab) {
+    document.querySelectorAll(".object-tab").forEach(button => button.classList.remove("active"));
+    tab?.classList.add("active");
+    categoriesPanel.hidden = tab !== categoriesTab;
+    poPanel.hidden = tab !== poTab;
+}
+
+async function loadPoTypes() {
+    const response = await fetch("/api/po-types");
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || "Не удалось загрузить ПО");
+    poItems = result.items || [];
+    renderPoList();
+    fillObjectPoSelect();
+}
+
+function renderPoList() {
+    if (!poList) return;
+    poList.replaceChildren();
+
+    if (!poItems.length) {
+        const empty = document.createElement("div");
+        empty.className = "category-empty";
+        empty.textContent = "ПО пока не добавлены";
+        poList.append(empty);
+        return;
+    }
+
+    poItems.forEach((item, index) => {
+        const row = document.createElement("div");
+        row.className = "category-row po-row";
+        row.innerHTML = `
+            <div class="category-number"></div>
+            <div class="category-name"><strong></strong></div>
+            <div class="category-actions">
+                <button type="button" class="category-icon-button edit-po" title="Переименовать">✎</button>
+                <button type="button" class="category-icon-button danger delete-po" title="Удалить">🗑</button>
+            </div>`;
+        row.querySelector(".category-number").textContent = index + 1;
+        row.querySelector("strong").textContent = item.name;
+        row.querySelector(".edit-po").dataset.id = item.id;
+        row.querySelector(".delete-po").dataset.id = item.id;
+        poList.append(row);
+    });
+}
+
+function fillObjectPoSelect() {
+    if (!objectPo) return;
+    const selected = new Set(Array.from(objectPo.selectedOptions).map(option => String(option.value)));
+    objectPo.replaceChildren();
+    poItems.forEach(item => {
+        const option = document.createElement("option");
+        option.value = item.id;
+        option.textContent = item.name;
+        option.selected = selected.has(String(item.id));
+        objectPo.append(option);
+    });
+}
+
+function openPoModal(item = null) {
+    poEditId = item?.id || null;
+    poModalTitle.textContent = item ? "Переименовать ПО" : "Добавить ПО";
+    poModalSave.textContent = item ? "Сохранить" : "Добавить";
+    poNameInput.value = item?.name || "";
+    poModalError.hidden = true;
+    poModalError.textContent = "";
+    poModal.hidden = false;
+    setTimeout(() => poNameInput.focus(), 0);
+}
+
+function closePoModal() {
+    poModal.hidden = true;
+}
+
+categoriesTab?.addEventListener("click", async () => {
+    activateObjectTab(categoriesTab);
+    try { await loadCategories(); }
+    catch (error) { categoryList.innerHTML = `<div class="category-empty">${error.message}</div>`; }
+});
+
+poTab?.addEventListener("click", async () => {
+    activateObjectTab(poTab);
+    try { await loadPoTypes(); }
+    catch (error) { poList.innerHTML = `<div class="category-empty">${error.message}</div>`; }
+});
+
+addPoButton?.addEventListener("click", () => openPoModal());
+poModalClose?.addEventListener("click", closePoModal);
+poModalCancel?.addEventListener("click", closePoModal);
+poModal?.addEventListener("click", event => {
+    if (event.target === poModal) closePoModal();
+});
+
+poList?.addEventListener("click", async event => {
+    const editButton = event.target.closest(".edit-po");
+    if (editButton) {
+        const item = poItems.find(value => String(value.id) === editButton.dataset.id);
+        if (item) openPoModal(item);
+        return;
+    }
+
+    const deleteButton = event.target.closest(".delete-po");
+    if (!deleteButton) return;
+
+    const item = poItems.find(value => String(value.id) === deleteButton.dataset.id);
+    if (!item || !confirm(`Удалить ПО «${item.name}»?`)) return;
+
+    try {
+        const response = await fetch(`/api/po-types/${item.id}`, {method: "DELETE"});
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || "Не удалось удалить ПО");
+        await loadPoTypes();
+    } catch (error) {
+        alert(error.message);
+    }
+});
+
+poModalSave?.addEventListener("click", async () => {
+    const name = poNameInput.value.trim();
+    if (!name) {
+        poModalError.textContent = "Введите наименование ПО";
+        poModalError.hidden = false;
+        return;
+    }
+
+    poModalSave.disabled = true;
+    poModalError.hidden = true;
+
+    try {
+        const url = poEditId ? `/api/po-types/${poEditId}` : "/api/po-types";
+        const response = await fetch(url, {
+            method: poEditId ? "PATCH" : "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({name}),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || "Не удалось сохранить ПО");
+        closePoModal();
+        await loadPoTypes();
+    } catch (error) {
+        poModalError.textContent = error.message;
+        poModalError.hidden = false;
+    } finally {
+        poModalSave.disabled = false;
+    }
+});
+
+// ПО также нужны в форме добавления нового объекта.
+loadPoTypes().catch(() => {});
+
+// ===== Employees / positions =====
+const employeesNavButton=document.getElementById("employeesNavButton"),employeesPage=document.getElementById("employeesPage"),backFromEmployeesButton=document.getElementById("backFromEmployeesButton"),employeesTab=document.getElementById("employeesTab"),positionsTab=document.getElementById("positionsTab"),employeesPanel=document.getElementById("employeesPanel"),positionsPanel=document.getElementById("positionsPanel"),positionList=document.getElementById("positionList"),addPositionButton=document.getElementById("addPositionButton"),positionModal=document.getElementById("positionModal"),positionModalTitle=document.getElementById("positionModalTitle"),positionModalClose=document.getElementById("positionModalClose"),positionModalCancel=document.getElementById("positionModalCancel"),positionModalSave=document.getElementById("positionModalSave"),positionNameInput=document.getElementById("positionNameInput"),positionDescriptionInput=document.getElementById("positionDescriptionInput"),positionModalError=document.getElementById("positionModalError");
+let positionItems=[],positionEditId=null;
+function showMainSection(section,nav){processingPage.hidden=section!==processingPage;objectsPage.hidden=section!==objectsPage;employeesPage.hidden=section!==employeesPage;setActiveNav(nav)}
+function activateEmployeeTab(tab){[employeesTab,positionsTab].forEach(b=>b?.classList.remove("active"));tab?.classList.add("active");employeesPanel.hidden=tab!==employeesTab;positionsPanel.hidden=tab!==positionsTab}
+async function loadPositions(){const r=await fetch("/api/positions"),x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось загрузить должности");positionItems=x.items||[];renderPositionList()}
+function renderPositionList(){positionList.replaceChildren();if(!positionItems.length){positionList.innerHTML='<div class="category-empty">Должности не найдены</div>';return}const header=document.createElement("div");header.className="position-table-header";header.innerHTML="<strong>Должность</strong><strong>Описание действий</strong><strong>Действия</strong>";positionList.append(header);positionItems.forEach(item=>{const row=document.createElement("div");row.className="position-table-row";row.innerHTML='<div class="position-title"></div><div class="position-description"></div><div class="category-actions"><button type="button" class="category-icon-button edit-position" title="Редактировать">✎</button><button type="button" class="category-icon-button danger delete-position" title="Удалить">🗑</button></div>';row.querySelector(".position-title").textContent=item.name;const d=row.querySelector(".position-description");d.textContent=item.action_description||"Описание действий не заполнено";if(!item.action_description)d.classList.add("empty-description");row.querySelector(".edit-position").dataset.id=item.id;row.querySelector(".delete-position").dataset.id=item.id;positionList.append(row)})}
+function openPositionModal(item=null){positionEditId=item?.id||null;positionModalTitle.textContent=item?"Редактировать должность":"Добавить должность";positionModalSave.textContent=item?"Сохранить":"Добавить";positionNameInput.value=item?.name||"";positionDescriptionInput.value=item?.action_description||"";positionModalError.hidden=true;positionModal.hidden=false;setTimeout(()=>positionNameInput.focus(),0)}
+function closePositionModal(){positionModal.hidden=true}
+employeesNavButton?.addEventListener("click",()=>{closeDetails();showMainSection(employeesPage,employeesNavButton);activateEmployeeTab(employeesTab)});
+backFromEmployeesButton?.addEventListener("click",()=>showMainSection(processingPage,document.querySelector(".nav-item:first-child")));
+employeesTab?.addEventListener("click",()=>activateEmployeeTab(employeesTab));
+positionsTab?.addEventListener("click",async()=>{activateEmployeeTab(positionsTab);try{await loadPositions()}catch(e){positionList.innerHTML=`<div class="category-empty">${e.message}</div>`}});
+addPositionButton?.addEventListener("click",()=>openPositionModal());
+positionModalClose?.addEventListener("click",closePositionModal);positionModalCancel?.addEventListener("click",closePositionModal);positionModal?.addEventListener("click",e=>{if(e.target===positionModal)closePositionModal()});
+positionList?.addEventListener("click",async e=>{const eb=e.target.closest(".edit-position");if(eb){const item=positionItems.find(x=>String(x.id)===eb.dataset.id);if(item)openPositionModal(item);return}const db=e.target.closest(".delete-position");if(!db)return;const item=positionItems.find(x=>String(x.id)===db.dataset.id);if(!item||!confirm(`Удалить должность «${item.name}»?`))return;try{const r=await fetch(`/api/positions/${item.id}`,{method:"DELETE"}),x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось удалить должность");await loadPositions()}catch(err){alert(err.message)}});
+positionModalSave?.addEventListener("click",async()=>{const name=positionNameInput.value.trim();if(!name){positionModalError.textContent="Введите название должности";positionModalError.hidden=false;return}positionModalSave.disabled=true;positionModalError.hidden=true;try{const url=positionEditId?`/api/positions/${positionEditId}`:"/api/positions",r=await fetch(url,{method:positionEditId?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,action_description:positionDescriptionInput.value.trim()||null})}),x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось сохранить должность");closePositionModal();await loadPositions()}catch(err){positionModalError.textContent=err.message;positionModalError.hidden=false}finally{positionModalSave.disabled=false}});
+
+
+// ===== Employees CRUD =====
+const employeeList=document.getElementById("employeeList");
+const addEmployeeButton=document.getElementById("addEmployeeButton");
+const employeeSearchInput=document.getElementById("employeeSearchInput");
+const employeeCount=document.getElementById("employeeCount");
+const employeeModal=document.getElementById("employeeModal");
+const employeeModalTitle=document.getElementById("employeeModalTitle");
+const employeeModalClose=document.getElementById("employeeModalClose");
+const employeeModalCancel=document.getElementById("employeeModalCancel");
+const employeeModalSave=document.getElementById("employeeModalSave");
+const employeeNameInput=document.getElementById("employeeNameInput");
+const employeePositionSelect=document.getElementById("employeePositionSelect");
+const employeeActionDescription=document.getElementById("employeeActionDescription");
+const employeePhoneInput=document.getElementById("employeePhoneInput");
+const employeeCrewSelect=document.getElementById("employeeCrewSelect");
+const employeeCrewPreview=document.getElementById("employeeCrewPreview");
+const employeeModalError=document.getElementById("employeeModalError");
+let employeeItems=[];
+let crewItems=[];
+let employeeEditId=null;
+
+async function loadEmployees(){
+    const response=await fetch("/api/employees");
+    const result=await response.json();
+    if(!response.ok) throw new Error(result.message||"Не удалось загрузить сотрудников");
+    employeeItems=result.items||[];
+    renderEmployees();
+}
+async function loadCrews(){
+    const response=await fetch("/api/crews");
+    const result=await response.json();
+    if(!response.ok) throw new Error(result.message||"Не удалось загрузить экипажи");
+    crewItems=result.items||[];
+}
+function renderEmployees(){
+    if(!employeeList)return;
+    employeeList.replaceChildren();
+    const q=(employeeSearchInput?.value||"").trim().toLocaleLowerCase("ru");
+    const items=employeeItems.filter(item=>!q||[item.full_name,item.position_name,item.phone,item.crew_name].some(v=>(v||"").toLocaleLowerCase("ru").includes(q)));
+    if(employeeCount)employeeCount.textContent=`Показано: ${items.length} из ${employeeItems.length}`;
+    if(!items.length){employeeList.innerHTML='<div class="category-empty">Сотрудники не найдены</div>';return}
+    const header=document.createElement("div");
+    header.className="employee-table-header";
+    header.innerHTML="<strong>ФИО</strong><strong>Должность</strong><strong>Телефон</strong><strong>Экипаж</strong><strong>Действия</strong>";
+    employeeList.append(header);
+    items.forEach(item=>{
+        const row=document.createElement("div");
+        row.className="employee-table-row";
+        row.innerHTML='<div class="employee-name"></div><div class="employee-position"></div><div class="employee-phone"></div><div class="employee-crew"></div><div class="category-actions"><button type="button" class="category-icon-button edit-employee" title="Редактировать">✎</button><button type="button" class="category-icon-button danger delete-employee" title="Удалить">🗑</button></div>';
+        row.querySelector(".employee-name").textContent=item.full_name||"—";
+        const p=row.querySelector(".employee-position"); p.textContent=item.position_name||"—"; if(item.action_description)p.title=item.action_description;
+        row.querySelector(".employee-phone").textContent=item.phone||"—";
+        const crew=crewItems.find(x=>x.id===item.crew_id); row.querySelector(".employee-crew").textContent=crew?.driver_full_name||item.crew_name||"—";
+        row.querySelector(".edit-employee").dataset.id=item.id;
+        row.querySelector(".delete-employee").dataset.id=item.id;
+        employeeList.append(row);
+    });
+}
+function fillEmployeeSelects(){
+    employeePositionSelect.innerHTML='<option value="">Не выбрана</option>';
+    (typeof positionItems!=="undefined"?positionItems:[]).forEach(item=>{
+        const o=document.createElement("option");o.value=item.id;o.textContent=item.name;employeePositionSelect.append(o);
+    });
+    employeeCrewSelect.innerHTML='<option value="">Не назначен</option>';
+    crewItems.forEach(item=>{const o=document.createElement("option");o.value=item.id;o.textContent=item.driver_full_name||"Водитель не указан";employeeCrewSelect.append(o)});
+}
+function updateEmployeeDescription(){
+    const item=(typeof positionItems!=="undefined"?positionItems:[]).find(x=>String(x.id)===employeePositionSelect.value);
+    employeeActionDescription.value=item?.action_description||"";
+}
+function updateEmployeeCrewPreview(){
+    const item=crewItems.find(x=>String(x.id)===employeeCrewSelect.value);
+    if(!item){employeeCrewPreview.hidden=true;employeeCrewPreview.textContent="";return}
+    const vehicle=[item.vehicle_make,item.vehicle_plate].filter(Boolean).join(" · ");
+    employeeCrewPreview.textContent=[item.driver_full_name,item.driver_phone,vehicle].filter(Boolean).join(" | ");
+    employeeCrewPreview.hidden=false;
+}
+async function openEmployeeModal(item=null){
+    employeeEditId=item?.id||null;
+    employeeModalTitle.textContent=item?"Редактирование сотрудника":"Добавить сотрудника";
+    employeeModalSave.textContent=item?"Сохранить":"Добавить";
+    employeeModalError.hidden=true;employeeModalError.textContent="";
+    try{
+        if(typeof positionItems==="undefined"||!positionItems.length)await loadPositions();
+        if(!crewItems.length)await loadCrews();
+        fillEmployeeSelects();
+        employeeNameInput.value=item?.full_name||"";
+        employeePositionSelect.value=item?.position_id==null?"":String(item.position_id);
+        employeePhoneInput.value=item?.phone||"";
+        employeeCrewSelect.value=item?.crew_id==null?"":String(item.crew_id);
+        updateEmployeeDescription();updateEmployeeCrewPreview();
+        employeeModal.hidden=false;setTimeout(()=>employeeNameInput.focus(),0);
+    }catch(error){alert(error.message)}
+}
+function closeEmployeeModal(){employeeModal.hidden=true}
+employeeSearchInput?.addEventListener("input",renderEmployees);
+employeePositionSelect?.addEventListener("change",updateEmployeeDescription);
+employeeCrewSelect?.addEventListener("change",updateEmployeeCrewPreview);
+addEmployeeButton?.addEventListener("click",()=>openEmployeeModal());
+employeeModalClose?.addEventListener("click",closeEmployeeModal);
+employeeModalCancel?.addEventListener("click",closeEmployeeModal);
+employeeModal?.addEventListener("click",e=>{if(e.target===employeeModal)closeEmployeeModal()});
+employeeList?.addEventListener("click",async e=>{
+    const edit=e.target.closest(".edit-employee");
+    if(edit){const item=employeeItems.find(x=>x.id===Number(edit.dataset.id));if(item)await openEmployeeModal(item);return}
+    const del=e.target.closest(".delete-employee");
+    if(del){
+        const item=employeeItems.find(x=>x.id===Number(del.dataset.id));
+        if(!item||!confirm(`Удалить сотрудника «${item.full_name}»?`))return;
+        try{const r=await fetch(`/api/employees/${item.id}`,{method:"DELETE"});const x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось удалить сотрудника");await loadEmployees()}catch(error){alert(error.message)}
+    }
+});
+employeeModalSave?.addEventListener("click",async()=>{
+    const full_name=employeeNameInput.value.trim();
+    if(!full_name){employeeModalError.textContent="Введите ФИО сотрудника";employeeModalError.hidden=false;return}
+    employeeModalSave.disabled=true;employeeModalError.hidden=true;
+    try{
+        const body={
+            full_name,
+            position_id:employeePositionSelect.value?Number(employeePositionSelect.value):null,
+            phone:employeePhoneInput.value.trim()||null,
+            crew_id:employeeCrewSelect.value?Number(employeeCrewSelect.value):null
+        };
+        const r=await fetch(employeeEditId?`/api/employees/${employeeEditId}`:"/api/employees",{
+            method:employeeEditId?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)
+        });
+        const x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось сохранить сотрудника");
+        closeEmployeeModal();await loadEmployees();
+    }catch(error){employeeModalError.textContent=error.message;employeeModalError.hidden=false}
+    finally{employeeModalSave.disabled=false}
+});
+
+// Existing Employees navigation opens this panel; load data on first use.
+employeesNavButton?.addEventListener("click",()=>loadEmployees().catch(error=>{if(employeeList)employeeList.innerHTML=`<div class="category-empty">${error.message}</div>`}));
+employeesTab?.addEventListener("click",()=>loadEmployees().catch(()=>{}));
+
+
+// ===== Crews page / CRUD =====
+const crewsNavButton=document.getElementById("crewsNavButton");
+const crewsPage=document.getElementById("crewsPage");
+const backFromCrewsButton=document.getElementById("backFromCrewsButton");
+const crewList=document.getElementById("crewList");
+const addCrewButton=document.getElementById("addCrewButton");
+const crewSearchInput=document.getElementById("crewSearchInput");
+const crewCount=document.getElementById("crewCount");
+const crewModal=document.getElementById("crewModal");
+const crewModalTitle=document.getElementById("crewModalTitle");
+const crewModalClose=document.getElementById("crewModalClose");
+const crewModalCancel=document.getElementById("crewModalCancel");
+const crewModalSave=document.getElementById("crewModalSave");
+const crewDriverInput=document.getElementById("crewDriverInput");
+const crewPhoneInput=document.getElementById("crewPhoneInput");
+const crewVehicleInput=document.getElementById("crewVehicleInput");
+const crewPlateInput=document.getElementById("crewPlateInput");
+const crewModalError=document.getElementById("crewModalError");
+let crewEditId=null;
+
+async function refreshCrews(){
+    await loadCrews();
+    renderCrews();
+}
+function renderCrews(){
+    if(!crewList)return;
+    crewList.replaceChildren();
+    const q=(crewSearchInput?.value||"").trim().toLocaleLowerCase("ru");
+    const items=crewItems.filter(item=>!q||[
+        item.driver_full_name,item.driver_phone,item.vehicle_make,item.vehicle_plate
+    ].some(v=>(v||"").toLocaleLowerCase("ru").includes(q)));
+    if(crewCount)crewCount.textContent=`Показано: ${items.length} из ${crewItems.length}`;
+    if(!items.length){
+        crewList.innerHTML='<div class="category-empty">Экипажи не найдены</div>';
+        return;
+    }
+    const header=document.createElement("div");
+    header.className="crew-table-header";
+    header.innerHTML="<strong>Водитель</strong><strong>Телефон</strong><strong>Автомобиль</strong><strong>Гос. номер</strong><strong>Действия</strong>";
+    crewList.append(header);
+    items.forEach(item=>{
+        const row=document.createElement("div");
+        row.className="crew-table-row";
+        row.innerHTML='<div class="crew-driver"></div><div class="crew-phone"></div><div class="crew-vehicle"></div><div class="crew-plate"></div><div class="category-actions"><button type="button" class="category-icon-button edit-crew" title="Редактировать">✎</button><button type="button" class="category-icon-button danger delete-crew" title="Удалить">🗑</button></div>';
+        row.querySelector(".crew-driver").textContent=item.driver_full_name||"—";
+        row.querySelector(".crew-phone").textContent=item.driver_phone||"—";
+        row.querySelector(".crew-vehicle").textContent=item.vehicle_make||"—";
+        row.querySelector(".crew-plate").textContent=item.vehicle_plate||"—";
+        row.querySelector(".edit-crew").dataset.id=item.id;
+        row.querySelector(".delete-crew").dataset.id=item.id;
+        crewList.append(row);
+    });
+}
+function openCrewModal(item=null){
+    crewEditId=item?.id||null;
+    crewModalTitle.textContent=item?"Редактирование экипажа":"Добавить экипаж";
+    crewModalSave.textContent=item?"Сохранить":"Добавить";
+    crewDriverInput.value=item?.driver_full_name||"";
+    crewPhoneInput.value=item?.driver_phone||"";
+    crewVehicleInput.value=item?.vehicle_make||"";
+    crewPlateInput.value=item?.vehicle_plate||"";
+    crewModalError.hidden=true;crewModalError.textContent="";
+    crewModal.hidden=false;
+    setTimeout(()=>crewDriverInput.focus(),0);
+}
+function closeCrewModal(){crewModal.hidden=true}
+
+crewsNavButton?.addEventListener("click",async()=>{
+    closeDetails();
+    processingPage.hidden=true;
+    if(objectsPage)objectsPage.hidden=true;
+    if(employeesPage)employeesPage.hidden=true;
+    crewsPage.hidden=false;
+    setActiveNav(crewsNavButton);
+    try{await refreshCrews()}
+    catch(error){crewList.innerHTML=`<div class="category-empty">${error.message}</div>`}
+});
+backFromCrewsButton?.addEventListener("click",()=>{
+    crewsPage.hidden=true;
+    processingPage.hidden=false;
+    setActiveNav(document.querySelector(".nav-item:first-child"));
+});
+crewSearchInput?.addEventListener("input",renderCrews);
+addCrewButton?.addEventListener("click",()=>openCrewModal());
+crewModalClose?.addEventListener("click",closeCrewModal);
+crewModalCancel?.addEventListener("click",closeCrewModal);
+crewModal?.addEventListener("click",e=>{if(e.target===crewModal)closeCrewModal()});
+
+crewList?.addEventListener("click",async e=>{
+    const edit=e.target.closest(".edit-crew");
+    if(edit){
+        const item=crewItems.find(x=>x.id===Number(edit.dataset.id));
+        if(item)openCrewModal(item);
+        return;
+    }
+    const del=e.target.closest(".delete-crew");
+    if(!del)return;
+    const item=crewItems.find(x=>x.id===Number(del.dataset.id));
+    if(!item)return;
+    const linked=employeeItems.filter(x=>x.crew_id===item.id).length;
+    const extra=linked?`\n\nК этому экипажу привязано сотрудников: ${linked}. После удаления у них будет снято закрепление за экипажем.`:"";
+    if(!confirm(`Удалить экипаж водителя «${item.driver_full_name||"без ФИО"}»?${extra}`))return;
+    try{
+        const r=await fetch(`/api/crews/${item.id}`,{method:"DELETE"});
+        const x=await r.json();
+        if(!r.ok)throw new Error(x.message||"Не удалось удалить экипаж");
+        await refreshCrews();
+        if(employeeItems.length)await loadEmployees();
+    }catch(error){alert(error.message)}
+});
+
+crewModalSave?.addEventListener("click",async()=>{
+    const driver_full_name=crewDriverInput.value.trim();
+    if(!driver_full_name){
+        crewModalError.textContent="Укажите ФИО водителя";
+        crewModalError.hidden=false;
+        return;
+    }
+    crewModalSave.disabled=true;crewModalError.hidden=true;
+    try{
+        const body={
+            driver_full_name,
+            driver_phone:crewPhoneInput.value.trim()||null,
+            vehicle_make:crewVehicleInput.value.trim()||null,
+            vehicle_plate:crewPlateInput.value.trim()||null
+        };
+        const r=await fetch(crewEditId?`/api/crews/${crewEditId}`:"/api/crews",{
+            method:crewEditId?"PATCH":"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify(body)
+        });
+        const x=await r.json();
+        if(!r.ok)throw new Error(x.message||"Не удалось сохранить экипаж");
+        closeCrewModal();
+        await refreshCrews();
+        if(employeeItems.length)await loadEmployees();
+    }catch(error){
+        crewModalError.textContent=error.message;
+        crewModalError.hidden=false;
+    }finally{
+        crewModalSave.disabled=false;
+    }
+});
+
+
+// ===== Contractors page / CRUD =====
+const contractorsNavButton=document.getElementById("contractorsNavButton");
+const contractorsPage=document.getElementById("contractorsPage");
+const backFromContractorsButton=document.getElementById("backFromContractorsButton");
+const contractorList=document.getElementById("contractorList");
+const addContractorButton=document.getElementById("addContractorButton");
+const contractorSearchInput=document.getElementById("contractorSearchInput");
+const contractorCount=document.getElementById("contractorCount");
+const contractorModal=document.getElementById("contractorModal");
+const contractorModalTitle=document.getElementById("contractorModalTitle");
+const contractorModalClose=document.getElementById("contractorModalClose");
+const contractorModalCancel=document.getElementById("contractorModalCancel");
+const contractorModalSave=document.getElementById("contractorModalSave");
+const contractorNameInput=document.getElementById("contractorNameInput");
+const contractorModalError=document.getElementById("contractorModalError");
+let contractorItems=[];
+let contractorEditId=null;
+
+async function loadContractors(){
+    const r=await fetch("/api/contractors");
+    const x=await r.json();
+    if(!r.ok)throw new Error(x.message||"Не удалось загрузить подрядные организации");
+    contractorItems=x.items||[];
+    renderContractors();
+}
+function renderContractors(){
+    if(!contractorList)return;
+    contractorList.replaceChildren();
+    const q=(contractorSearchInput?.value||"").trim().toLocaleLowerCase("ru");
+    const items=contractorItems.filter(x=>!q||(x.name||"").toLocaleLowerCase("ru").includes(q));
+    if(contractorCount)contractorCount.textContent=`Показано: ${items.length} из ${contractorItems.length}`;
+    if(!items.length){contractorList.innerHTML='<div class="category-empty">Организации не найдены</div>';return}
+    const h=document.createElement("div");h.className="contractor-table-header";h.innerHTML="<strong>Наименование</strong><strong>Действия</strong>";contractorList.append(h);
+    items.forEach(item=>{
+        const row=document.createElement("div");row.className="contractor-table-row";
+        row.innerHTML='<div class="contractor-name"></div><div class="category-actions"><button type="button" class="category-icon-button edit-contractor" title="Редактировать">✎</button><button type="button" class="category-icon-button danger delete-contractor" title="Удалить">🗑</button></div>';
+        row.querySelector(".contractor-name").textContent=item.name;
+        row.querySelector(".edit-contractor").dataset.id=item.id;
+        row.querySelector(".delete-contractor").dataset.id=item.id;
+        contractorList.append(row);
+    });
+}
+function openContractorModal(item=null){
+    contractorEditId=item?.id||null;
+    contractorModalTitle.textContent=item?"Редактирование организации":"Добавить организацию";
+    contractorModalSave.textContent=item?"Сохранить":"Добавить";
+    contractorNameInput.value=item?.name||"";
+    contractorModalError.hidden=true;contractorModalError.textContent="";
+    contractorModal.hidden=false;setTimeout(()=>contractorNameInput.focus(),0);
+}
+function closeContractorModal(){contractorModal.hidden=true}
+
+contractorsNavButton?.addEventListener("click",async()=>{
+    closeDetails();processingPage.hidden=true;
+    if(objectsPage)objectsPage.hidden=true;
+    if(employeesPage)employeesPage.hidden=true;
+    if(crewsPage)crewsPage.hidden=true;
+    contractorsPage.hidden=false;setActiveNav(contractorsNavButton);
+    try{await loadContractors()}catch(error){contractorList.innerHTML=`<div class="category-empty">${error.message}</div>`}
+});
+backFromContractorsButton?.addEventListener("click",()=>{contractorsPage.hidden=true;processingPage.hidden=false;setActiveNav(document.querySelector(".nav-item:first-child"))});
+contractorSearchInput?.addEventListener("input",renderContractors);
+addContractorButton?.addEventListener("click",()=>openContractorModal());
+contractorModalClose?.addEventListener("click",closeContractorModal);
+contractorModalCancel?.addEventListener("click",closeContractorModal);
+contractorModal?.addEventListener("click",e=>{if(e.target===contractorModal)closeContractorModal()});
+
+contractorList?.addEventListener("click",async e=>{
+    const edit=e.target.closest(".edit-contractor");
+    if(edit){const item=contractorItems.find(x=>x.id===Number(edit.dataset.id));if(item)openContractorModal(item);return}
+    const del=e.target.closest(".delete-contractor");
+    if(!del)return;
+    const item=contractorItems.find(x=>x.id===Number(del.dataset.id));
+    if(!item||!confirm(`Удалить организацию «${item.name}»?`))return;
+    try{
+        const r=await fetch(`/api/contractors/${item.id}`,{method:"DELETE"});
+        const x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось удалить организацию");
+        await loadContractors();
+    }catch(error){alert(error.message)}
+});
+contractorModalSave?.addEventListener("click",async()=>{
+    const name=contractorNameInput.value.trim();
+    if(!name){contractorModalError.textContent="Укажите наименование организации";contractorModalError.hidden=false;return}
+    contractorModalSave.disabled=true;contractorModalError.hidden=true;
+    try{
+        const r=await fetch(contractorEditId?`/api/contractors/${contractorEditId}`:"/api/contractors",{
+            method:contractorEditId?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name})
+        });
+        const x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось сохранить организацию");
+        closeContractorModal();await loadContractors();
+    }catch(error){contractorModalError.textContent=error.message;contractorModalError.hidden=false}
+    finally{contractorModalSave.disabled=false}
 });

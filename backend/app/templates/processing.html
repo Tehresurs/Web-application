@@ -15,9 +15,9 @@
         </div>
         <nav class="navigation" aria-label="Основная навигация">
             <button class="nav-item active"><span>▣</span>Обработка отчётов</button>
-            <button class="nav-item"><span>♙</span>Сотрудники</button>
-            <button class="nav-item"><span>◇</span>Объекты строительства</button>
-            <button class="nav-item"><span>▱</span>Экипажи</button>
+            <button class="nav-item" id="employeesNavButton"><span>♙</span>Сотрудники</button>
+            <button class="nav-item" id="objectsNavButton"><span>◇</span>Объекты строительства</button>
+            <button class="nav-item" id="crewsNavButton"><span>▱</span>Экипажи</button><button class="nav-item" id="contractorsNavButton"><span>▦</span>Подрядчики</button>
             <button class="nav-item"><span>≡</span>Логи</button><button class="nav-item"><span>⚙</span>Настройки</button>
         </nav>
         <div class="sidebar-footer"><strong>Техресурс</strong><br><small>Система контроля отчётов</small><div class="version">v 1.0.0</div></div>
@@ -29,6 +29,7 @@
             <div class="header-meta"><div class="system-status"><span></span>Система готова</div><div class="header-date" id="headerDate">—</div><div class="header-user">◉ Администратор⌄</div></div>
         </header>
 
+        <div id="processingPage">
         <section class="card upload-card">
 
             <div class="folder-selector">
@@ -60,6 +61,55 @@
                 <button type="button" class="view-button" data-report-index="0" title="Открыть" aria-label="Открыть отчёт">👁</button>
             </template>
         </section>
+        </div>
+
+        <section class="objects-page" id="objectsPage" hidden>
+            <header class="page-header objects-page-header">
+                <div><h1>Объекты строительства</h1><p>Объекты, категории и производственные организации</p></div>
+                <button type="button" class="secondary-button" id="backToProcessingButton">← Обработка отчётов</button>
+            </header>
+            <section class="card">
+                <div class="object-tabs" role="tablist">
+                    <button type="button" class="object-tab" id="objectsTab">Объекты</button>
+                    <button type="button" class="object-tab active" id="categoriesTab">Категории</button>
+                    <button type="button" class="object-tab" id="poTab">ПО</button>
+                </div>
+                <div id="categoriesPanel">
+                    <div class="category-header"><div><h2>Категории объектов</h2><p>Основные категории защищены. Подкатегории можно изменять внутри «Прочее».</p></div></div>
+                    <div id="categoryList" class="category-list"><div class="category-loading">Загрузка категорий...</div></div>
+                </div>
+                <div id="poPanel" hidden>
+                    <div class="category-header">
+                        <div><h2>Производственные организации (ПО)</h2><p>Справочник ПО для привязки к объектам строительства.</p></div>
+                        <button type="button" class="primary-button" id="addPoButton">+ Добавить ПО</button>
+                    </div>
+                    <div id="poList" class="category-list"><div class="category-loading">Загрузка ПО...</div></div>
+                </div>
+            </section>
+        </section>
+<section class="objects-page" id="employeesPage" hidden><header class="page-header objects-page-header"><div><h1>Сотрудники</h1><p>Сотрудники и справочник должностей</p></div><button type="button" class="secondary-button" id="backFromEmployeesButton">← Обработка отчётов</button></header><section class="card"><div class="object-tabs"><button type="button" class="object-tab active" id="employeesTab">Сотрудники</button><button type="button" class="object-tab" id="positionsTab">Должности</button></div><div id="employeesPanel">
+<div class="category-header"><div><h2>Сотрудники</h2><p>Справочник сотрудников, должностей и закрепления за экипажами.</p></div><button type="button" class="primary-button" id="addEmployeeButton">+ Добавить сотрудника</button></div>
+<div class="employee-toolbar"><input type="search" id="employeeSearchInput" placeholder="Поиск по ФИО, должности, телефону или экипажу..."><span id="employeeCount"></span></div>
+<div id="employeeList" class="employee-list"><div class="category-loading">Загрузка сотрудников...</div></div>
+</div><div id="positionsPanel" hidden><div class="category-header"><div><h2>Должности</h2><p>Справочник должностей сотрудников.</p></div><button type="button" class="primary-button" id="addPositionButton">+ Добавить должность</button></div><div id="positionList" class="category-list"><div class="category-loading">Загрузка должностей...</div></div></div></section></section>
+<section class="objects-page" id="crewsPage" hidden>
+  <header class="page-header objects-page-header">
+    <div><h1>Экипажи</h1><p>Водители и закреплённый транспорт</p></div>
+    <button type="button" class="secondary-button" id="backFromCrewsButton">← Обработка отчётов</button>
+  </header>
+  <section class="card">
+    <div class="category-header">
+      <div><h2>Экипажи</h2><p>Экипаж отображается по ФИО водителя.</p></div>
+      <button type="button" class="primary-button" id="addCrewButton">+ Добавить экипаж</button>
+    </div>
+    <div class="crew-toolbar">
+      <input type="search" id="crewSearchInput" placeholder="Поиск по водителю, телефону, автомобилю или гос. номеру...">
+      <span id="crewCount"></span>
+    </div>
+    <div id="crewList" class="crew-list"><div class="category-loading">Загрузка экипажей...</div></div>
+  </section>
+</section>
+
     </main>
 </div>
 
@@ -87,6 +137,7 @@
             <h3>Добавление объекта</h3>
             <label class="form-label">Наименование объекта<textarea id="newObjectName" rows="4"></textarea></label>
             <label class="form-label">Категория объекта<select id="objectCategory"><option value="">Выберите категорию</option></select></label>
+            <label class="form-label" id="objectSubcategoryLabel" hidden>Подкатегория<select id="objectSubcategory"><option value="">Выберите подкатегорию</option></select></label>
             <label class="form-label">Производственные организации (ПО)<select id="objectPo" multiple size="5"></select></label>
             <label class="form-label">Комментарий<textarea id="objectComment" rows="3" placeholder="Необязательно"></textarea></label>
         </section>
@@ -94,7 +145,97 @@
     <div class="details-footer"><button type="button" class="secondary-button" id="detailsCancel">Закрыть</button><button type="button" class="primary-button" id="addObjectButton" hidden>Добавить в базу</button></div>
 </aside>
 
+
+
+<section class="objects-page" id="contractorsPage" hidden>
+  <header class="page-header objects-page-header">
+    <div><h1>Подрядные организации</h1><p>Справочник генподрядчиков и субподрядчиков</p></div>
+    <button type="button" class="secondary-button" id="backFromContractorsButton">← Обработка отчётов</button>
+  </header>
+  <section class="card">
+    <div class="category-header">
+      <div><h2>Подрядные организации</h2><p>Единый справочник организаций. Роль будет задаваться отдельно для каждого объекта.</p></div>
+      <button type="button" class="primary-button" id="addContractorButton">+ Добавить организацию</button>
+    </div>
+    <div class="contractor-toolbar">
+      <input type="search" id="contractorSearchInput" placeholder="Поиск по наименованию организации...">
+      <span id="contractorCount"></span>
+    </div>
+    <div id="contractorList" class="contractor-list"><div class="category-loading">Загрузка организаций...</div></div>
+  </section>
+</section>
+<div class="modal-overlay" id="categoryModal" hidden>
+  <div class="modal category-modal">
+    <div class="modal-header"><h2 id="categoryModalTitle">Добавить подкатегорию</h2><button type="button" class="modal-close" id="categoryModalClose">×</button></div>
+    <div class="modal-body">
+      <div class="category-parent-note">Основная категория: <strong>6. Прочее</strong></div>
+      <label class="form-label">Название<input type="text" id="categoryNameInput" maxlength="255" placeholder="Введите название подкатегории"></label>
+      <div class="category-number-preview" id="categoryNumberPreview"></div>
+      <div class="database-status error" id="categoryModalError" hidden></div>
+    </div>
+    <div class="modal-footer"><button type="button" class="secondary-button" id="categoryModalCancel">Отмена</button><button type="button" class="primary-button" id="categoryModalSave">Добавить</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="poModal" hidden>
+  <div class="modal category-modal">
+    <div class="modal-header"><h2 id="poModalTitle">Добавить ПО</h2><button type="button" class="modal-close" id="poModalClose">×</button></div>
+    <div class="modal-body">
+      <label class="form-label">Наименование ПО<input type="text" id="poNameInput" maxlength="255" placeholder="Введите наименование ПО"></label>
+      <div class="database-status error" id="poModalError" hidden></div>
+    </div>
+    <div class="modal-footer"><button type="button" class="secondary-button" id="poModalCancel">Отмена</button><button type="button" class="primary-button" id="poModalSave">Добавить</button></div>
+  </div>
+</div>
+
+
+
+<div class="modal-overlay" id="contractorModal" hidden>
+  <div class="modal contractor-modal">
+    <div class="modal-header"><h2 id="contractorModalTitle">Добавить организацию</h2><button type="button" class="modal-close" id="contractorModalClose">×</button></div>
+    <div class="modal-body">
+      <label class="form-label">Наименование *<input type="text" id="contractorNameInput" maxlength="255" placeholder="ООО «Наименование»"></label>
+      <div class="database-status error" id="contractorModalError" hidden></div>
+    </div>
+    <div class="modal-footer"><button type="button" class="secondary-button" id="contractorModalCancel">Отмена</button><button type="button" class="primary-button" id="contractorModalSave">Добавить</button></div>
+  </div>
+</div>
+<div class="modal-overlay" id="crewModal" hidden>
+  <div class="modal crew-modal">
+    <div class="modal-header">
+      <h2 id="crewModalTitle">Добавить экипаж</h2>
+      <button type="button" class="modal-close" id="crewModalClose">×</button>
+    </div>
+    <div class="modal-body">
+      <label class="form-label">Водитель *<input type="text" id="crewDriverInput" maxlength="255" placeholder="Фамилия Имя Отчество"></label>
+      <label class="form-label">Телефон<input type="text" id="crewPhoneInput" maxlength="30" placeholder="+7 ..."></label>
+      <label class="form-label">Автомобиль<input type="text" id="crewVehicleInput" maxlength="100" placeholder="Марка автомобиля"></label>
+      <label class="form-label">Гос. номер<input type="text" id="crewPlateInput" maxlength="30" placeholder="А123АА86"></label>
+      <div class="database-status error" id="crewModalError" hidden></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="secondary-button" id="crewModalCancel">Отмена</button>
+      <button type="button" class="primary-button" id="crewModalSave">Добавить</button>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="employeeModal" hidden>
+  <div class="modal employee-modal">
+    <div class="modal-header"><h2 id="employeeModalTitle">Добавить сотрудника</h2><button type="button" class="modal-close" id="employeeModalClose">×</button></div>
+    <div class="modal-body">
+      <label class="form-label">ФИО *<input type="text" id="employeeNameInput" maxlength="255" placeholder="Фамилия Имя Отчество"></label>
+      <label class="form-label">Должность<select id="employeePositionSelect"><option value="">Не выбрана</option></select></label>
+      <label class="form-label">Описание действий<textarea id="employeeActionDescription" rows="4" readonly placeholder="Описание выбранной должности"></textarea></label>
+      <label class="form-label">Телефон<input type="text" id="employeePhoneInput" maxlength="30" placeholder="+7 ..."></label>
+      <label class="form-label">Экипаж<select id="employeeCrewSelect"><option value="">Не назначен</option></select></label>
+      <div class="employee-crew-preview" id="employeeCrewPreview" hidden></div>
+      <div class="database-status error" id="employeeModalError" hidden></div>
+    </div>
+    <div class="modal-footer"><button type="button" class="secondary-button" id="employeeModalCancel">Отмена</button><button type="button" class="primary-button" id="employeeModalSave">Добавить</button></div>
+  </div>
+</div>
+<div class="modal-overlay" id="positionModal" hidden><div class="modal category-modal"><div class="modal-header"><h2 id="positionModalTitle">Добавить должность</h2><button type="button" class="modal-close" id="positionModalClose">×</button></div><div class="modal-body"><label class="form-label">Название должности<input type="text" id="positionNameInput" maxlength="255" placeholder="Введите название должности"></label><label class="form-label">Описание действий<textarea id="positionDescriptionInput" rows="6" placeholder="Введите описание действий для этой должности"></textarea></label><div class="database-status error" id="positionModalError" hidden></div></div><div class="modal-footer"><button type="button" class="secondary-button" id="positionModalCancel">Отмена</button><button type="button" class="primary-button" id="positionModalSave">Добавить</button></div></div></div>
 <div class="modal-overlay" id="modal" hidden><div class="modal"><div class="modal-header"><h2>Требуется согласование</h2><button class="modal-close" id="modalClose" aria-label="Закрыть">×</button></div><div class="modal-body"><div class="source-value"><span>Значение из Word</span><strong>Трофимов Сергей Николаевич</strong></div><h3>Возможное совпадение</h3><label class="candidate"><input type="radio" name="candidate" checked><div><strong>Трофимов Сергей Николаевич</strong><span>Инженер СК</span></div><b>98%</b></label></div><div class="modal-footer"><button class="secondary-button">Добавить нового</button><button class="primary-button">Связать</button></div></div></div>
-<script src="/static/js/processing.js"></script>
+<script src="/static/js/processing.js?v=20260924-9"></script>
 </body>
 </html>
