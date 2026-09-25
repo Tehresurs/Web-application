@@ -243,6 +243,74 @@ function setDetailsValue(id, value) {
     document.getElementById(id).textContent = value || "—";
 }
 
+function buildCheckRow(label, status, parsedValue, candidates = []) {
+    const row = document.createElement("div");
+    row.style.padding = "12px 0";
+    row.style.borderBottom = "1px solid rgba(148, 163, 184, .25)";
+
+    const header = document.createElement("div");
+    header.style.display = "flex";
+    header.style.justifyContent = "space-between";
+    header.style.gap = "12px";
+    header.style.alignItems = "center";
+
+    const title = document.createElement("strong");
+    title.textContent = label;
+    header.append(title);
+
+    const badge = document.createElement("span");
+    const labels = {
+        found: "НАЙДЕНО",
+        similar: "ПОХОЖЕЕ",
+        new: "НОВОЕ",
+        not_checked: "НЕ УКАЗАНО",
+    };
+    badge.textContent = labels[status] || "НЕ ПРОВЕРЕНО";
+    badge.className = `status-badge ${status === "found" ? "ok" : status === "not_checked" ? "" : status === "similar" || status === "new" ? "warning" : "error"}`;
+    header.append(badge);
+    row.append(header);
+
+    const value = document.createElement("div");
+    value.style.marginTop = "6px";
+    value.textContent = parsedValue || "—";
+    row.append(value);
+
+    if (status === "found") {
+        const note = document.createElement("small");
+        note.textContent = "Совпадение найдено в базе данных.";
+        row.append(note);
+    } else if (status === "similar" && candidates.length) {
+        const note = document.createElement("small");
+        note.textContent = "Похожие записи в базе:";
+        row.append(note);
+        const list = document.createElement("ul");
+        list.style.margin = "6px 0 0 18px";
+        candidates.forEach(candidate => {
+            const item = document.createElement("li");
+            const entity = candidate.employee || candidate.object || candidate.po || candidate;
+            const name = entity.full_name || entity.name || "—";
+            const score = typeof candidate.similarity === "number" ? ` (${Math.round(candidate.similarity * 100)}%)` : "";
+            item.textContent = name + score;
+            list.append(item);
+        });
+        row.append(list);
+    } else if (status === "similar") {
+        const note = document.createElement("small");
+        note.textContent = "Найдено похожее значение. Требуется согласование.";
+        row.append(note);
+    } else if (status === "new") {
+        const note = document.createElement("small");
+        note.textContent = "Такой записи в базе данных нет.";
+        row.append(note);
+    } else if (status === "not_checked") {
+        const note = document.createElement("small");
+        note.textContent = "Значение в отчёте не указано — проверка не требуется.";
+        row.append(note);
+    }
+
+    return row;
+}
+
 function openDetails(report) {
     clearTimeout(closeDetailsTimer);
     setDetailsValue("detailsFile", report.filename);
@@ -253,43 +321,26 @@ function openDetails(report) {
     setDetailsValue("detailsGeneralContractor", report.general_contractor);
     setDetailsValue("detailsSubcontractor", report.subcontractor);
 
+    document.getElementById("detailsTitle").textContent = "Результат проверки";
+
     const databaseStatus = document.getElementById("databaseStatus");
     databaseStatus.className = "database-status";
+    databaseStatus.replaceChildren();
 
-    if (report.object_status === "new") {
-        document.getElementById("detailsTitle").textContent = "Новый объект";
-        databaseStatus.textContent = "Объект отсутствует в базе данных.";
-        databaseStatus.classList.add("warning");
-        newObjectSection.hidden = false;
-        addObjectButton.hidden = false;
-        document.getElementById("newObjectName").value = report.object_name || "";
-    } else if (report.object_status === "similar") {
-        document.getElementById("detailsTitle").textContent = "Требуется согласование";
-        databaseStatus.textContent = "Найден похожий объект. Требуется решение пользователя.";
-        databaseStatus.classList.add("warning");
-        newObjectSection.hidden = true;
-        addObjectButton.hidden = true;
-    } else if (report.object_status === "found") {
-        document.getElementById("detailsTitle").textContent = "Результат проверки";
-        databaseStatus.textContent = "Объект найден в базе данных.";
-        databaseStatus.classList.add("ok");
-        newObjectSection.hidden = true;
-        addObjectButton.hidden = true;
-    } else {
-        document.getElementById("detailsTitle").textContent = "Ошибка проверки";
-        databaseStatus.textContent = "Объект не распознан или проверка не выполнена.";
-        databaseStatus.classList.add("error");
-        newObjectSection.hidden = true;
-        addObjectButton.hidden = true;
-    }
+    databaseStatus.append(
+        buildCheckRow("Сотрудник", report.employee_status, report.full_name, report.employee_candidates || []),
+        buildCheckRow("Объект", report.object_status, report.object_name, report.object_candidates || []),
+        buildCheckRow("Генподрядчик", report.general_contractor_status, report.general_contractor, report.general_contractor_candidates || []),
+        buildCheckRow("Субподрядчик", report.subcontractor_status || (report.subcontractor ? "not_checked" : "not_checked"), report.subcontractor, report.subcontractor_candidates || [])
+    );
 
-    if (report.problems?.length) {
-        databaseStatus.textContent += " " + report.problems.join(". ") + ".";
-    }
-    document.getElementById("objectCategory").value = "";
-    updateObjectSubcategories();
-    document.getElementById("objectPo").selectedIndex = -1;
-    document.getElementById("objectComment").value = "";
+    // На этом этапе окно только показывает результаты сравнения.
+    // Согласование и добавление новых записей подключим отдельным шагом.
+    newObjectSection.hidden = true;
+    addObjectButton.hidden = true;
+
+    const objectComment = document.getElementById("objectComment");
+    if (objectComment) objectComment.value = "";
 
     detailsOverlay.hidden = false;
     requestAnimationFrame(() => detailsPanel.classList.add("open"));
@@ -336,37 +387,14 @@ function removeNewObjectProblems(report) {
 
 addObjectButton?.addEventListener("click", async () => {
     if (activeReportIndex === null) return;
-
     const report = window.processingReports[activeReportIndex];
     if (!report) return;
 
     const name = document.getElementById("newObjectName").value.trim();
-    const parent = categoryTree.find(item => String(item.id) === objectCategory.value);
-    const children = parent?.children || [];
-
     if (!name) {
         alert("Введите наименование объекта");
         return;
     }
-
-    if (!parent) {
-        alert("Выберите категорию объекта");
-        return;
-    }
-
-    let categoryId = Number(parent.id);
-
-    if (children.length) {
-        if (!objectSubcategory.value) {
-            alert("Выберите подкатегорию");
-            return;
-        }
-        categoryId = Number(objectSubcategory.value);
-    }
-
-    const poIds = Array.from(objectPo.selectedOptions)
-        .map(option => Number(option.value))
-        .filter(Number.isFinite);
 
     const oldText = addObjectButton.textContent;
     addObjectButton.disabled = true;
@@ -376,25 +404,16 @@ addObjectButton?.addEventListener("click", async () => {
         const response = await fetch("/api/objects", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({
-                name,
-                category_id: categoryId,
-                po_ids: poIds,
-            }),
+            body: JSON.stringify({name}),
         });
-
         const result = await response.json();
-
-        if (!response.ok) {
-            throw new Error(result.message || "Не удалось добавить объект");
-        }
+        if (!response.ok) throw new Error(result.message || "Не удалось добавить объект");
 
         report.object_name = result.object?.name || name;
-        report.object_id = result.object.id;
+        report.object_id = result.object?.id ?? result.id ?? report.object_id;
         report.object_status = "found";
         removeNewObjectProblems(report);
 
-        // Если других проблем по отчёту нет, переводим общий статус в OK.
         const hasEmployeeProblem =
             report.employee_status === "new" ||
             report.employee_status === "similar";
@@ -418,6 +437,7 @@ addObjectButton?.addEventListener("click", async () => {
         newObjectSection.hidden = true;
         addObjectButton.hidden = true;
 
+        if (typeof loadObjects === "function") loadObjects().catch(() => {});
     } catch (error) {
         const databaseStatus = document.getElementById("databaseStatus");
         databaseStatus.textContent = error.message || "Ошибка добавления объекта";
@@ -442,9 +462,6 @@ const categoryModalSave = document.getElementById("categoryModalSave");
 const categoryNameInput = document.getElementById("categoryNameInput");
 const categoryNumberPreview = document.getElementById("categoryNumberPreview");
 const categoryModalError = document.getElementById("categoryModalError");
-const objectCategory = document.getElementById("objectCategory");
-const objectSubcategory = document.getElementById("objectSubcategory");
-const objectSubcategoryLabel = document.getElementById("objectSubcategoryLabel");
 let categoryTree = [];
 let categoryEditId = null;
 let categoryParentId = null;
@@ -460,8 +477,145 @@ async function loadCategories() {
     if (!response.ok) throw new Error(result.message || "Не удалось загрузить категории");
     categoryTree = result.items || [];
     renderCategoryList();
-    fillObjectCategorySelect();
 }
+
+// ===== Construction objects / objects directory =====
+const objectsTab = document.getElementById("objectsTab");
+const objectsPanel = document.getElementById("objectsPanel");
+const objectList = document.getElementById("objectList");
+const addDirectoryObjectButton = document.getElementById("addDirectoryObjectButton");
+const objectSearchInput = document.getElementById("objectSearchInput");
+const objectCount = document.getElementById("objectCount");
+const objectDirectoryModal = document.getElementById("objectDirectoryModal");
+const objectDirectoryModalTitle = document.getElementById("objectDirectoryModalTitle");
+const objectDirectoryModalClose = document.getElementById("objectDirectoryModalClose");
+const objectDirectoryModalCancel = document.getElementById("objectDirectoryModalCancel");
+const objectDirectoryModalSave = document.getElementById("objectDirectoryModalSave");
+const objectDirectoryNameInput = document.getElementById("objectDirectoryNameInput");
+const objectDirectoryModalError = document.getElementById("objectDirectoryModalError");
+let objectItems = [];
+let objectEditId = null;
+
+async function loadObjects() {
+    const response = await fetch("/api/objects");
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || "Не удалось загрузить объекты");
+    objectItems = result.items || result.objects || [];
+    renderObjectList();
+}
+
+function renderObjectList() {
+    if (!objectList) return;
+    objectList.replaceChildren();
+    const query = (objectSearchInput?.value || "").trim().toLocaleLowerCase("ru");
+    const items = objectItems.filter(item =>
+        !query || (item.name || "").toLocaleLowerCase("ru").includes(query)
+    );
+    if (objectCount) objectCount.textContent = `Показано: ${items.length} из ${objectItems.length}`;
+
+    if (!items.length) {
+        objectList.innerHTML = `<div class="category-empty">${objectItems.length ? "Объекты не найдены" : "Объекты пока не добавлены"}</div>`;
+        return;
+    }
+
+    items.forEach((item, index) => {
+        const row = document.createElement("div");
+        row.className = "category-row";
+        row.innerHTML = `
+            <div class="category-number"></div>
+            <div class="category-name"><strong></strong></div>
+            <div class="category-actions">
+                <button type="button" class="category-icon-button edit-object-directory" title="Редактировать">✎</button>
+                <button type="button" class="category-icon-button danger delete-object-directory" title="Удалить">🗑</button>
+            </div>`;
+        row.querySelector(".category-number").textContent = index + 1;
+        row.querySelector("strong").textContent = item.name || "—";
+        row.querySelector(".edit-object-directory").dataset.id = item.id;
+        row.querySelector(".delete-object-directory").dataset.id = item.id;
+        objectList.append(row);
+    });
+}
+
+function openObjectDirectoryModal(item = null) {
+    objectEditId = item?.id || null;
+    objectDirectoryModalTitle.textContent = item ? "Редактирование объекта" : "Добавить объект";
+    objectDirectoryModalSave.textContent = item ? "Сохранить" : "Добавить";
+    objectDirectoryNameInput.value = item?.name || "";
+    objectDirectoryModalError.hidden = true;
+    objectDirectoryModalError.textContent = "";
+    objectDirectoryModal.hidden = false;
+    setTimeout(() => objectDirectoryNameInput.focus(), 0);
+}
+
+function closeObjectDirectoryModal() {
+    objectDirectoryModal.hidden = true;
+    objectEditId = null;
+}
+
+objectSearchInput?.addEventListener("input", renderObjectList);
+addDirectoryObjectButton?.addEventListener("click", () => openObjectDirectoryModal());
+objectDirectoryModalClose?.addEventListener("click", closeObjectDirectoryModal);
+objectDirectoryModalCancel?.addEventListener("click", closeObjectDirectoryModal);
+objectDirectoryModal?.addEventListener("click", event => {
+    if (event.target === objectDirectoryModal) closeObjectDirectoryModal();
+});
+
+objectList?.addEventListener("click", async event => {
+    const editButton = event.target.closest(".edit-object-directory");
+    if (editButton) {
+        const item = objectItems.find(value => String(value.id) === editButton.dataset.id);
+        if (item) openObjectDirectoryModal(item);
+        return;
+    }
+
+    const deleteButton = event.target.closest(".delete-object-directory");
+    if (!deleteButton) return;
+    const item = objectItems.find(value => String(value.id) === deleteButton.dataset.id);
+    if (!item) return;
+
+    if (!confirm(`Удалить объект «${item.name}»?`)) return;
+
+    try {
+        const response = await fetch(`/api/objects/${item.id}`, {method: "DELETE"});
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || "Не удалось удалить объект");
+        await loadObjects();
+        if (typeof employeeItems !== "undefined" && employeeItems.length) await loadEmployees();
+    } catch (error) {
+        alert(error.message);
+    }
+});
+
+objectDirectoryModalSave?.addEventListener("click", async () => {
+    const name = objectDirectoryNameInput.value.trim();
+    if (!name) {
+        objectDirectoryModalError.textContent = "Введите наименование объекта";
+        objectDirectoryModalError.hidden = false;
+        return;
+    }
+
+    objectDirectoryModalSave.disabled = true;
+    objectDirectoryModalError.hidden = true;
+    try {
+        const response = await fetch(
+            objectEditId ? `/api/objects/${objectEditId}` : "/api/objects",
+            {
+                method: objectEditId ? "PATCH" : "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({name}),
+            }
+        );
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.message || "Не удалось сохранить объект");
+        closeObjectDirectoryModal();
+        await loadObjects();
+    } catch (error) {
+        objectDirectoryModalError.textContent = error.message;
+        objectDirectoryModalError.hidden = false;
+    } finally {
+        objectDirectoryModalSave.disabled = false;
+    }
+});
 
 function categoryNumber(parent, child = null) {
     return child ? `${parent.sort_order}.${child.sort_order}` : String(parent.sort_order);
@@ -511,44 +665,15 @@ function renderCategoryList() {
     });
 }
 
-function fillObjectCategorySelect() {
-    if (!objectCategory) return;
-    const current = objectCategory.value;
-    objectCategory.innerHTML = '<option value="">Выберите категорию</option>';
-    categoryTree.forEach(parent => {
-        const option = document.createElement("option");
-        option.value = parent.id;
-        option.textContent = `${parent.sort_order}. ${parent.name}`;
-        objectCategory.append(option);
-    });
-    objectCategory.value = current;
-    updateObjectSubcategories();
-}
-
-function updateObjectSubcategories() {
-    if (!objectCategory || !objectSubcategory) return;
-    const parent = categoryTree.find(item => String(item.id) === objectCategory.value);
-    const children = parent?.children || [];
-    objectSubcategory.innerHTML = '<option value="">Выберите подкатегорию</option>';
-    children.forEach(child => {
-        const option = document.createElement("option");
-        option.value = child.id;
-        option.textContent = `${parent.sort_order}.${child.sort_order} ${child.name}`;
-        objectSubcategory.append(option);
-    });
-    objectSubcategoryLabel.hidden = !children.length;
-    if (!children.length) objectSubcategory.value = "";
-}
-
-objectCategory?.addEventListener("change", updateObjectSubcategories);
 
 objectsNavButton?.addEventListener("click", async () => {
     closeDetails();
     processingPage.hidden = true;
     objectsPage.hidden = false;
     setActiveNav(objectsNavButton);
-    try { await loadCategories(); }
-    catch (error) { categoryList.innerHTML = `<div class="category-empty">${error.message}</div>`; }
+    activateObjectTab(objectsTab);
+    try { await loadObjects(); }
+    catch (error) { objectList.innerHTML = `<div class="category-empty">${error.message}</div>`; }
 });
 
 backToProcessingButton?.addEventListener("click", () => {
@@ -630,7 +755,7 @@ categoryModalSave?.addEventListener("click", async () => {
     } finally { categoryModalSave.disabled = false; }
 });
 
-// Категории нужны и в правой панели нового объекта.
+// Загружаем справочник категорий для вкладки и назначений.
 loadCategories().catch(() => {});
 
 
@@ -648,13 +773,13 @@ const poModalCancel = document.getElementById("poModalCancel");
 const poModalSave = document.getElementById("poModalSave");
 const poNameInput = document.getElementById("poNameInput");
 const poModalError = document.getElementById("poModalError");
-const objectPo = document.getElementById("objectPo");
 let poItems = [];
 let poEditId = null;
 
 function activateObjectTab(tab) {
-    document.querySelectorAll(".object-tab").forEach(button => button.classList.remove("active"));
+    [objectsTab, categoriesTab, poTab].forEach(button => button?.classList.remove("active"));
     tab?.classList.add("active");
+    if (objectsPanel) objectsPanel.hidden = tab !== objectsTab;
     categoriesPanel.hidden = tab !== categoriesTab;
     poPanel.hidden = tab !== poTab;
 }
@@ -665,7 +790,6 @@ async function loadPoTypes() {
     if (!response.ok) throw new Error(result.message || "Не удалось загрузить ПО");
     poItems = result.items || [];
     renderPoList();
-    fillObjectPoSelect();
 }
 
 function renderPoList() {
@@ -698,18 +822,6 @@ function renderPoList() {
     });
 }
 
-function fillObjectPoSelect() {
-    if (!objectPo) return;
-    const selected = new Set(Array.from(objectPo.selectedOptions).map(option => String(option.value)));
-    objectPo.replaceChildren();
-    poItems.forEach(item => {
-        const option = document.createElement("option");
-        option.value = item.id;
-        option.textContent = item.name;
-        option.selected = selected.has(String(item.id));
-        objectPo.append(option);
-    });
-}
 
 function openPoModal(item = null) {
     poEditId = item?.id || null;
@@ -725,6 +837,12 @@ function openPoModal(item = null) {
 function closePoModal() {
     poModal.hidden = true;
 }
+
+objectsTab?.addEventListener("click", async () => {
+    activateObjectTab(objectsTab);
+    try { await loadObjects(); }
+    catch (error) { objectList.innerHTML = `<div class="category-empty">${error.message}</div>`; }
+});
 
 categoriesTab?.addEventListener("click", async () => {
     activateObjectTab(categoriesTab);
@@ -799,7 +917,7 @@ poModalSave?.addEventListener("click", async () => {
     }
 });
 
-// ПО также нужны в форме добавления нового объекта.
+// Загружаем справочник ПО для вкладки и назначений.
 loadPoTypes().catch(() => {});
 
 // ===== Employees / positions =====
@@ -838,6 +956,19 @@ const employeePhoneInput=document.getElementById("employeePhoneInput");
 const employeeCrewSelect=document.getElementById("employeeCrewSelect");
 const employeeCrewPreview=document.getElementById("employeeCrewPreview");
 const employeeModalError=document.getElementById("employeeModalError");
+const employeeAssignmentsSection=document.getElementById("employeeAssignmentsSection");
+const employeeObjectsCount=document.getElementById("employeeObjectsCount");
+const employeeAssignmentsList=document.getElementById("employeeAssignmentsList");
+const addAssignmentButton=document.getElementById("addAssignmentButton");
+const assignmentEditor=document.getElementById("assignmentEditor");
+const assignmentObjectSelect=document.getElementById("assignmentObjectSelect");
+const assignmentPoSelect=document.getElementById("assignmentPoSelect");
+const assignmentCategorySelect=document.getElementById("assignmentCategorySelect");
+const assignmentCancelButton=document.getElementById("assignmentCancelButton");
+const assignmentSaveButton=document.getElementById("assignmentSaveButton");
+const assignmentError=document.getElementById("assignmentError");
+let employeeAssignments=[];let assignmentEditId=null;
+
 let employeeItems=[];
 let crewItems=[];
 let employeeEditId=null;
@@ -864,16 +995,17 @@ function renderEmployees(){
     if(!items.length){employeeList.innerHTML='<div class="category-empty">Сотрудники не найдены</div>';return}
     const header=document.createElement("div");
     header.className="employee-table-header";
-    header.innerHTML="<strong>ФИО</strong><strong>Должность</strong><strong>Телефон</strong><strong>Экипаж</strong><strong>Действия</strong>";
+    header.innerHTML="<strong>ФИО</strong><strong>Должность</strong><strong>Телефон</strong><strong>Экипаж</strong><strong>Объектов</strong><strong>Действия</strong>";
     employeeList.append(header);
     items.forEach(item=>{
         const row=document.createElement("div");
         row.className="employee-table-row";
-        row.innerHTML='<div class="employee-name"></div><div class="employee-position"></div><div class="employee-phone"></div><div class="employee-crew"></div><div class="category-actions"><button type="button" class="category-icon-button edit-employee" title="Редактировать">✎</button><button type="button" class="category-icon-button danger delete-employee" title="Удалить">🗑</button></div>';
+        row.innerHTML='<div class="employee-name"></div><div class="employee-position"></div><div class="employee-phone"></div><div class="employee-crew"></div><div class="employee-objects-count"></div><div class="category-actions"><button type="button" class="category-icon-button edit-employee" title="Редактировать">✎</button><button type="button" class="category-icon-button danger delete-employee" title="Удалить">🗑</button></div>';
         row.querySelector(".employee-name").textContent=item.full_name||"—";
         const p=row.querySelector(".employee-position"); p.textContent=item.position_name||"—"; if(item.action_description)p.title=item.action_description;
         row.querySelector(".employee-phone").textContent=item.phone||"—";
         const crew=crewItems.find(x=>x.id===item.crew_id); row.querySelector(".employee-crew").textContent=crew?.driver_full_name||item.crew_name||"—";
+        row.querySelector(".employee-objects-count").textContent=Number(item.objects_count)||0;
         row.querySelector(".edit-employee").dataset.id=item.id;
         row.querySelector(".delete-employee").dataset.id=item.id;
         employeeList.append(row);
@@ -898,6 +1030,12 @@ function updateEmployeeCrewPreview(){
     employeeCrewPreview.textContent=[item.driver_full_name,item.driver_phone,vehicle].filter(Boolean).join(" | ");
     employeeCrewPreview.hidden=false;
 }
+async function loadEmployeeAssignments(employeeId){const r=await fetch(`/api/employees/${employeeId}/assignments`),x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось загрузить назначения");employeeAssignments=x.items||[];employeeObjectsCount.textContent=`Объектов: ${x.objects_count||0}`;renderEmployeeAssignments()}
+function renderEmployeeAssignments(){employeeAssignmentsList.replaceChildren();if(!employeeAssignments.length){employeeAssignmentsList.innerHTML='<div class="assignment-empty">Назначений пока нет</div>';return}employeeAssignments.forEach(item=>{const row=document.createElement("div");row.className="assignment-row";row.innerHTML='<div class="assignment-main"><strong class="assignment-object"></strong><span class="assignment-po"></span><span class="assignment-category"></span></div><div class="category-actions"><button type="button" class="category-icon-button edit-assignment">✎</button><button type="button" class="category-icon-button danger delete-assignment">🗑</button></div>';row.querySelector(".assignment-object").textContent=item.object_name||"—";row.querySelector(".assignment-po").textContent=`ПО: ${item.po_name||"—"}`;row.querySelector(".assignment-category").textContent=`Категория: ${item.category_name||"—"}`;row.querySelector(".edit-assignment").dataset.id=item.id;row.querySelector(".delete-assignment").dataset.id=item.id;employeeAssignmentsList.append(row)})}
+async function loadAssignmentDictionaries(){const [a,b,c]=await Promise.all([fetch("/api/objects"),fetch("/api/po-types"),fetch("/api/object-categories")]);const [ax,bx,cx]=await Promise.all([a.json(),b.json(),c.json()]);if(!a.ok)throw new Error(ax.message||"Не удалось загрузить объекты");if(!b.ok)throw new Error(bx.message||"Не удалось загрузить ПО");if(!c.ok)throw new Error(cx.message||"Не удалось загрузить категории");assignmentObjectSelect.innerHTML='<option value="">Выберите объект</option>';(ax.items||ax.objects||[]).forEach(x=>assignmentObjectSelect.add(new Option(x.name,x.id)));assignmentPoSelect.innerHTML='<option value="">Выберите ПО</option>';(bx.items||[]).forEach(x=>assignmentPoSelect.add(new Option(x.name,x.id)));assignmentCategorySelect.innerHTML='<option value="">Выберите категорию</option>';(cx.items||[]).forEach(x=>assignmentCategorySelect.add(new Option(x.name,x.id)))}
+async function openAssignmentEditor(item=null){try{await loadAssignmentDictionaries();assignmentEditId=item?.id||null;assignmentObjectSelect.value=item?String(item.object_id):"";assignmentPoSelect.value=item?String(item.po_id):"";assignmentCategorySelect.value=item?String(item.category_id):"";assignmentSaveButton.textContent=item?"Сохранить":"Добавить";assignmentError.hidden=true;assignmentEditor.hidden=false}catch(e){alert(e.message)}}
+function closeAssignmentEditor(){assignmentEditor.hidden=true;assignmentEditId=null}
+
 async function openEmployeeModal(item=null){
     employeeEditId=item?.id||null;
     employeeModalTitle.textContent=item?"Редактирование сотрудника":"Добавить сотрудника";
@@ -911,7 +1049,8 @@ async function openEmployeeModal(item=null){
         employeePositionSelect.value=item?.position_id==null?"":String(item.position_id);
         employeePhoneInput.value=item?.phone||"";
         employeeCrewSelect.value=item?.crew_id==null?"":String(item.crew_id);
-        updateEmployeeDescription();updateEmployeeCrewPreview();
+        updateEmployeeDescription();updateEmployeeCrewPreview();closeAssignmentEditor();
+        if(item){employeeAssignmentsSection.hidden=false;await loadEmployeeAssignments(item.id)}else{employeeAssignmentsSection.hidden=true;employeeAssignments=[]}
         employeeModal.hidden=false;setTimeout(()=>employeeNameInput.focus(),0);
     }catch(error){alert(error.message)}
 }
@@ -933,6 +1072,11 @@ employeeList?.addEventListener("click",async e=>{
         try{const r=await fetch(`/api/employees/${item.id}`,{method:"DELETE"});const x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось удалить сотрудника");await loadEmployees()}catch(error){alert(error.message)}
     }
 });
+addAssignmentButton?.addEventListener("click",()=>openAssignmentEditor());
+assignmentCancelButton?.addEventListener("click",closeAssignmentEditor);
+employeeAssignmentsList?.addEventListener("click",async e=>{const edit=e.target.closest(".edit-assignment"),del=e.target.closest(".delete-assignment");if(edit){const item=employeeAssignments.find(x=>x.id===Number(edit.dataset.id));if(item)await openAssignmentEditor(item);return}if(del){const item=employeeAssignments.find(x=>x.id===Number(del.dataset.id));if(!item||!confirm(`Удалить назначение на объект «${item.object_name}»?`))return;try{const r=await fetch(`/api/employees/${employeeEditId}/assignments/${item.id}`,{method:"DELETE"}),x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось удалить назначение");await loadEmployeeAssignments(employeeEditId)}catch(err){alert(err.message)}}});
+assignmentSaveButton?.addEventListener("click",async()=>{if(!employeeEditId)return;const object_id=Number(assignmentObjectSelect.value),po_id=Number(assignmentPoSelect.value),category_id=Number(assignmentCategorySelect.value);if(!object_id||!po_id||!category_id){assignmentError.textContent="Выберите объект, ПО и категорию";assignmentError.hidden=false;return}assignmentSaveButton.disabled=true;assignmentError.hidden=true;try{const url=assignmentEditId?`/api/employees/${employeeEditId}/assignments/${assignmentEditId}`:`/api/employees/${employeeEditId}/assignments`;const r=await fetch(url,{method:assignmentEditId?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({object_id,po_id,category_id})}),x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось сохранить назначение");closeAssignmentEditor();await loadEmployeeAssignments(employeeEditId)}catch(err){assignmentError.textContent=err.message;assignmentError.hidden=false}finally{assignmentSaveButton.disabled=false}});
+
 employeeModalSave?.addEventListener("click",async()=>{
     const full_name=employeeNameInput.value.trim();
     if(!full_name){employeeModalError.textContent="Введите ФИО сотрудника";employeeModalError.hidden=false;return}

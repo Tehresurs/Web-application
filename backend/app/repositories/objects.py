@@ -89,32 +89,111 @@ def get_po_types():
     ]
 
 
-def create_object(
-    name: str,
-    category_id: int | None,
-    po_ids: list[int],
-):
-    """
-    Создаёт объект и связи с ПО одной транзакцией.
-    """
+
+def get_objects():
+    """Возвращает все объекты строительства."""
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT id, name
+                FROM construction_objects
+                ORDER BY name;
+                """
+            )
+            rows = cursor.fetchall()
+
+    return [{"id": row[0], "name": row[1]} for row in rows]
+
+
+def update_object(object_id: int, name: str):
+    """Переименовывает объект строительства."""
+    clean_name = " ".join(name.split())
+    if not clean_name:
+        raise ValueError("Наименование объекта не заполнено")
+
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT id FROM construction_objects WHERE id = %s;",
+                (object_id,),
+            )
+            if cursor.fetchone() is None:
+                raise ValueError("Объект не найден")
+
+            cursor.execute(
+                """
+                SELECT id
+                FROM construction_objects
+                WHERE LOWER(TRIM(name)) = LOWER(TRIM(%s))
+                  AND id <> %s
+                LIMIT 1;
+                """,
+                (clean_name, object_id),
+            )
+            if cursor.fetchone():
+                raise ValueError("Объект с таким наименованием уже существует")
+
+            cursor.execute(
+                """
+                UPDATE construction_objects
+                SET name = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+                RETURNING id, name;
+                """,
+                (clean_name, object_id),
+            )
+            row = cursor.fetchone()
+
+    return {"id": row[0], "name": row[1]}
+
+
+def delete_object(object_id: int):
+    """Удаляет объект, если он не используется в назначениях сотрудников."""
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "SELECT id, name FROM construction_objects WHERE id = %s;",
+                (object_id,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                raise ValueError("Объект не найден")
+
+            cursor.execute(
+                """
+                SELECT COUNT(*)
+                FROM employee_assignments
+                WHERE object_id = %s;
+                """,
+                (object_id,),
+            )
+            assignment_count = cursor.fetchone()[0]
+            if assignment_count > 0:
+                raise ValueError(
+                    f'Объект "{row[1]}" используется в '
+                    f'{assignment_count} назначениях сотрудников '
+                    f'и не может быть удалён.'
+                )
+
+            cursor.execute(
+                "DELETE FROM construction_objects WHERE id = %s;",
+                (object_id,),
+            )
+
+    return {"id": object_id, "deleted": True}
+
+def create_object(name: str):
+    """Создаёт объект строительства."""
 
     clean_name = " ".join(name.split())
 
     if not clean_name:
-        raise ValueError(
-            "Наименование объекта не заполнено"
-        )
-
-    unique_po_ids = list(dict.fromkeys(po_ids))
+        raise ValueError("Наименование объекта не заполнено")
 
     with get_connection() as conn:
-
         with conn.cursor() as cursor:
-
-            # ---------------------------------
-            # 1. Проверяем дублирование объекта
-            # ---------------------------------
-
             cursor.execute(
                 """
                 SELECT id, name
@@ -129,113 +208,24 @@ def create_object(
 
             if existing:
                 raise ValueError(
-                    f"Объект уже существует в базе: "
-                    f"{existing[1]}"
+                    f"Объект уже существует в базе: {existing[1]}"
                 )
-
-            # ---------------------------------
-            # 2. Проверяем категорию
-            # ---------------------------------
-
-            if category_id is not None:
-
-                cursor.execute(
-                    """
-                    SELECT id
-                    FROM object_categories
-                    WHERE id = %s;
-                    """,
-                    (category_id,),
-                )
-
-                if cursor.fetchone() is None:
-                    raise ValueError(
-                        "Выбранная категория объекта "
-                        "не найдена"
-                    )
-
-            # ---------------------------------
-            # 3. Проверяем ПО
-            # ---------------------------------
-
-            if unique_po_ids:
-
-                cursor.execute(
-                    """
-                    SELECT id
-                    FROM po_types
-                    WHERE id = ANY(%s);
-                    """,
-                    (unique_po_ids,),
-                )
-
-                found_po_ids = {
-                    row[0]
-                    for row in cursor.fetchall()
-                }
-
-                missing_po_ids = (
-                    set(unique_po_ids)
-                    - found_po_ids
-                )
-
-                if missing_po_ids:
-                    raise ValueError(
-                        "Некоторые выбранные ПО "
-                        "не найдены в базе"
-                    )
-
-            # ---------------------------------
-            # 4. Создаём объект
-            # ---------------------------------
 
             cursor.execute(
                 """
-                INSERT INTO construction_objects
-                    (name, category_id)
-                VALUES
-                    (%s, %s)
-                RETURNING id, name, category_id;
+                INSERT INTO construction_objects (name)
+                VALUES (%s)
+                RETURNING id, name;
                 """,
-                (
-                    clean_name,
-                    category_id,
-                ),
+                (clean_name,),
             )
 
             row = cursor.fetchone()
 
-            object_id = row[0]
-
-            # ---------------------------------
-            # 5. Создаём связи объект ↔ ПО
-            # ---------------------------------
-
-            for po_id in unique_po_ids:
-
-                cursor.execute(
-                    """
-                    INSERT INTO object_po
-                        (object_id, po_id)
-                    VALUES
-                        (%s, %s);
-                    """,
-                    (
-                        object_id,
-                        po_id,
-                    ),
-                )
-
-        # psycopg context выполнит COMMIT,
-        # если исключения не возникло.
-
     return {
         "id": row[0],
         "name": row[1],
-        "category_id": row[2],
-        "po_ids": unique_po_ids,
     }
-
 
 def create_subcategory(parent_id: int, name: str):
     clean_name = " ".join(name.split())
@@ -441,23 +431,23 @@ def delete_subcategory(category_id: int):
                     "Удалять можно только подкатегории"
                 )
 
-            # Проверяем использование подкатегории объектами.
+            # Проверяем использование категории в назначениях сотрудников.
             cursor.execute(
                 """
                 SELECT COUNT(*)
-                FROM construction_objects
+                FROM employee_assignments
                 WHERE category_id = %s;
                 """,
                 (category_id_db,),
             )
 
-            object_count = cursor.fetchone()[0]
+            assignment_count = cursor.fetchone()[0]
 
-            if object_count > 0:
+            if assignment_count > 0:
                 raise ValueError(
                     f'Подкатегория "{category_name}" '
-                    f"используется для {object_count} объектов. "
-                    f"Сначала необходимо перенести объекты."
+                    f"используется в {assignment_count} назначениях сотрудников "
+                    f"и не может быть удалена."
                 )
 
             # Удаляем.
@@ -600,18 +590,19 @@ def delete_po_type(po_id: int):
             cursor.execute(
                 """
                 SELECT COUNT(*)
-                FROM object_po
+                FROM employee_assignments
                 WHERE po_id = %s;
                 """,
                 (po_id,),
             )
 
-            object_count = cursor.fetchone()[0]
+            assignment_count = cursor.fetchone()[0]
 
-            if object_count > 0:
+            if assignment_count > 0:
                 raise ValueError(
-                    f'ПО "{po[1]}" используется для '
-                    f"{object_count} объектов и не может быть удалено."
+                    f'ПО "{po[1]}" используется в '
+                    f"{assignment_count} назначениях сотрудников "
+                    f"и не может быть удалено."
                 )
 
             cursor.execute(

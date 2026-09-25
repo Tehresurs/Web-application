@@ -9,11 +9,11 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
 from app.services.processing_service import list_report_files, process_folder
-from app.repositories.contractors import (
-    get_contractors,
-    create_contractor,
-    update_contractor,
-    delete_contractor,
+from app.repositories.assignments import (
+    get_employee_assignments,
+    create_employee_assignment,
+    update_employee_assignment,
+    delete_employee_assignment,
 )
 from app.repositories.employees import (
     get_crews,
@@ -30,7 +30,10 @@ from app.repositories.employees import (
     delete_position,
 )
 from app.repositories.objects import (
+    get_objects,
     create_object,
+    update_object,
+    delete_object,
     get_object_categories,
     get_po_types,
     create_subcategory,
@@ -127,8 +130,6 @@ class ProcessFolderRequest(BaseModel):
 
 class CreateObjectRequest(BaseModel):
     name: str = Field(min_length=1)
-    category_id: int | None = None
-    po_ids: list[int] = Field(default_factory=list)
 
 
 class CreateSubcategoryRequest(BaseModel):
@@ -157,8 +158,12 @@ class EmployeeRequest(BaseModel):
     crew_id: int | None = None
 
 
-class ContractorRequest(BaseModel):
-    name: str = Field(min_length=1)
+class EmployeeAssignmentRequest(BaseModel):
+    object_id: int
+    po_id: int
+    category_id: int
+
+
 
 
 class PositionRequest(BaseModel):
@@ -198,13 +203,19 @@ def po_types():
     }
 
 
+@app.get("/api/objects")
+def objects():
+    return {
+        "status": "ok",
+        "items": get_objects(),
+    }
+
+
 @app.post("/api/objects")
 def add_object(payload: CreateObjectRequest):
     try:
         new_object = create_object(
             name=payload.name,
-            category_id=payload.category_id,
-            po_ids=payload.po_ids,
         )
         return {
             "status": "ok",
@@ -226,6 +237,32 @@ def add_object(payload: CreateObjectRequest):
                 "message": "Не удалось добавить объект",
                 "details": str(error),
             },
+        )
+
+
+@app.patch("/api/objects/{object_id}")
+def edit_object(object_id: int, payload: CreateObjectRequest):
+    try:
+        item = update_object(object_id=object_id, name=payload.name)
+        return {"status": "ok", "object": item}
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={"status": "error", "message": str(error)},
+        )
+
+
+@app.delete("/api/objects/{object_id}")
+def remove_object(object_id: int):
+    try:
+        return {
+            "status": "ok",
+            **delete_object(object_id),
+        }
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={"status": "error", "message": str(error)},
         )
 
 
@@ -525,6 +562,86 @@ def remove_employee(employee_id: int):
         )
 
 
+@app.get("/api/employees/{employee_id}/assignments")
+def employee_assignments(employee_id: int):
+    try:
+        result = get_employee_assignments(employee_id)
+        return {
+            "status": "ok",
+            **result,
+        }
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={"status": "error", "message": str(error)},
+        )
+
+
+@app.post("/api/employees/{employee_id}/assignments")
+def add_employee_assignment(
+    employee_id: int,
+    payload: EmployeeAssignmentRequest,
+):
+    try:
+        item = create_employee_assignment(
+            employee_id=employee_id,
+            object_id=payload.object_id,
+            po_id=payload.po_id,
+            category_id=payload.category_id,
+        )
+        return {
+            "status": "ok",
+            "item": item,
+        }
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={"status": "error", "message": str(error)},
+        )
+
+
+@app.patch("/api/employees/{employee_id}/assignments/{assignment_id}")
+def edit_employee_assignment(
+    employee_id: int,
+    assignment_id: int,
+    payload: EmployeeAssignmentRequest,
+):
+    try:
+        item = update_employee_assignment(
+            employee_id=employee_id,
+            assignment_id=assignment_id,
+            object_id=payload.object_id,
+            po_id=payload.po_id,
+            category_id=payload.category_id,
+        )
+        return {
+            "status": "ok",
+            "item": item,
+        }
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={"status": "error", "message": str(error)},
+        )
+
+
+@app.delete("/api/employees/{employee_id}/assignments/{assignment_id}")
+def remove_employee_assignment(
+    employee_id: int,
+    assignment_id: int,
+):
+    try:
+        return {
+            "status": "ok",
+            **delete_employee_assignment(employee_id, assignment_id),
+        }
+    except ValueError as error:
+        return JSONResponse(
+            status_code=400,
+            content={"status": "error", "message": str(error)},
+        )
+
+
 @app.get("/api/crews")
 def crews():
     return {
@@ -602,57 +719,4 @@ def remove_crew(crew_id: int):
                 "status": "error",
                 "message": str(error),
             },
-        )
-
-
-@app.get("/api/contractors")
-def contractors():
-    return {
-        "status": "ok",
-        "items": get_contractors(),
-    }
-
-
-@app.post("/api/contractors")
-def add_contractor(payload: ContractorRequest):
-    try:
-        return {
-            "status": "ok",
-            "item": create_contractor(payload.name),
-        }
-    except ValueError as error:
-        return JSONResponse(
-            status_code=400,
-            content={"status": "error", "message": str(error)},
-        )
-
-
-@app.patch("/api/contractors/{contractor_id}")
-def edit_contractor(
-    contractor_id: int,
-    payload: ContractorRequest,
-):
-    try:
-        return {
-            "status": "ok",
-            "item": update_contractor(contractor_id, payload.name),
-        }
-    except ValueError as error:
-        return JSONResponse(
-            status_code=400,
-            content={"status": "error", "message": str(error)},
-        )
-
-
-@app.delete("/api/contractors/{contractor_id}")
-def remove_contractor(contractor_id: int):
-    try:
-        return {
-            "status": "ok",
-            **delete_contractor(contractor_id),
-        }
-    except ValueError as error:
-        return JSONResponse(
-            status_code=400,
-            content={"status": "error", "message": str(error)},
         )

@@ -32,12 +32,8 @@ def get_all_objects():
                 """
                 SELECT
                     o.id,
-                    o.name,
-                    o.category_id,
-                    c.name AS category_name
+                    o.name
                 FROM construction_objects o
-                LEFT JOIN object_categories c
-                    ON c.id = o.category_id
                 ORDER BY o.name;
                 """
             )
@@ -47,8 +43,6 @@ def get_all_objects():
         {
             "id": row[0],
             "name": row[1],
-            "category_id": row[2],
-            "category_name": row[3],
         }
         for row in rows
     ]
@@ -87,7 +81,5 @@ def match_object(object_name: str):
         "candidates": [],
         "new_object": {
             "name": object_name,
-            "category_id": None,
-            "po_ids": [],
         },
     }

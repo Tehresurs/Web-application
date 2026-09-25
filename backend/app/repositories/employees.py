@@ -252,10 +252,24 @@ def get_employees():
                     p.action_description,
                     e.phone,
                     e.crew_id,
-                    c.name AS crew_name
+                    c.name AS crew_name,
+                    COUNT(DISTINCT ea.object_id) AS objects_count
                 FROM employees e
-                LEFT JOIN positions p ON p.id = e.position_id
-                LEFT JOIN crews c ON c.id = e.crew_id
+                LEFT JOIN positions p
+                    ON p.id = e.position_id
+                LEFT JOIN crews c
+                    ON c.id = e.crew_id
+                LEFT JOIN employee_assignments ea
+                    ON ea.employee_id = e.id
+                GROUP BY
+                    e.id,
+                    e.full_name,
+                    e.position_id,
+                    p.name,
+                    p.action_description,
+                    e.phone,
+                    e.crew_id,
+                    c.name
                 ORDER BY e.full_name;
                 """
             )
@@ -271,6 +285,7 @@ def get_employees():
             "phone": row[5] or "",
             "crew_id": row[6],
             "crew_name": row[7],
+            "objects_count": row[8],
         }
         for row in rows
     ]

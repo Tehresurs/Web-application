@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from app.parsers.word_parser import read_document
+from app.services.po_matcher import match_po
 
 
 def list_report_files(folder: Path) -> list[Path]:
@@ -15,16 +16,13 @@ def get_field_value(field: dict | None, raw: bool = False) -> str | None:
     return field.get("raw" if raw else "value")
 
 
-def get_report_status(data: dict) -> str:
-    """Отсутствие обязательных данных — ошибка, согласование — предупреждение."""
-    if any(not data[key]["found"] for key in (
-        "report_date", "object", "inspector", "general_contractor",
-    )):
+def get_report_status(data: dict, general_po_match: dict, subcontractor_po_match: dict) -> str:
+    if any(not data[key]["found"] for key in ("report_date", "object", "inspector", "general_contractor")):
         return "error"
-    if any(data[key]["status"] in {"similar", "new"}
-           for key in ("employee_match", "object_match")):
-        return "warning"
-    return "ok"
+    statuses = [data["employee_match"]["status"], data["object_match"]["status"], general_po_match["status"]]
+    if data["subcontractor"]["found"]:
+        statuses.append(subcontractor_po_match["status"])
+    return "warning" if any(s in {"similar", "new"} for s in statuses) else "ok"
 
 
 def prepare_report(document: dict) -> dict:
@@ -32,9 +30,15 @@ def prepare_report(document: dict) -> dict:
     inspector = data["inspector"]
     employee_match = data["employee_match"]
     object_match = data["object_match"]
+    general_contractor_value = get_field_value(data["general_contractor"], raw=True)
+    subcontractor_value = get_field_value(data["subcontractor"], raw=True)
+    general_po_match = match_po(general_contractor_value) if general_contractor_value else {"status": "not_checked", "po": None, "candidates": []}
+    subcontractor_po_match = match_po(subcontractor_value) if subcontractor_value else {"status": "not_checked", "po": None, "candidates": []}
 
     employee_status = employee_match["status"]
     object_status = object_match["status"]
+    general_contractor_status = general_po_match["status"]
+    subcontractor_status = subcontractor_po_match["status"]
 
     problems = []
     if not data["report_date"]["found"]:
@@ -57,6 +61,10 @@ def prepare_report(document: dict) -> dict:
         )
     if not data["general_contractor"]["found"]:
         problems.append("Генподрядчик не распознан")
+    elif general_contractor_status in {"similar", "new"}:
+        problems.append("Требуется согласование генподрядчика" if general_contractor_status == "similar" else "Новый генподрядчик")
+    if data["subcontractor"]["found"] and subcontractor_status in {"similar", "new"}:
+        problems.append("Требуется согласование субподрядчика" if subcontractor_status == "similar" else "Новый субподрядчик")
 
     employee = (
         employee_match.get("employee")
@@ -64,6 +72,8 @@ def prepare_report(document: dict) -> dict:
         else None
     )
     database_object = object_match.get("object") if object_status == "found" else None
+    general_po = general_po_match.get("po") if general_contractor_status == "found" else None
+    subcontractor_po = subcontractor_po_match.get("po") if subcontractor_status == "found" else None
 
     return {
         "filename": document["filename"],
@@ -73,14 +83,20 @@ def prepare_report(document: dict) -> dict:
         "report_date": get_field_value(data["report_date"], raw=True),
         "object_name": get_field_value(data["object"], raw=True),
         "object_id": database_object.get("id") if database_object else None,
-        "general_contractor": get_field_value(data["general_contractor"], raw=True),
-        "subcontractor": get_field_value(data["subcontractor"], raw=True),
+        "general_contractor": general_contractor_value,
+        "subcontractor": subcontractor_value,
+        "general_contractor_id": general_po.get("id") if general_po else None,
+        "subcontractor_id": subcontractor_po.get("id") if subcontractor_po else None,
         "employee_status": employee_status,
         "object_status": object_status,
-        "status": get_report_status(data),
+        "general_contractor_status": general_contractor_status,
+        "subcontractor_status": subcontractor_status,
+        "status": get_report_status(data, general_po_match, subcontractor_po_match),
         "problems": problems,
         "employee_candidates": employee_match.get("candidates", []),
         "object_candidates": object_match.get("candidates", []),
+        "general_contractor_candidates": general_po_match.get("candidates", []),
+        "subcontractor_candidates": subcontractor_po_match.get("candidates", []),
     }
 
 

@@ -70,11 +70,22 @@
             </header>
             <section class="card">
                 <div class="object-tabs" role="tablist">
-                    <button type="button" class="object-tab" id="objectsTab">Объекты</button>
-                    <button type="button" class="object-tab active" id="categoriesTab">Категории</button>
+                    <button type="button" class="object-tab active" id="objectsTab">Объекты</button>
+                    <button type="button" class="object-tab" id="categoriesTab">Категории</button>
                     <button type="button" class="object-tab" id="poTab">ПО</button>
                 </div>
-                <div id="categoriesPanel">
+                <div id="objectsPanel">
+                    <div class="category-header">
+                        <div><h2>Объекты строительства</h2><p>Справочник объектов. Категории и ПО назначаются сотруднику отдельно.</p></div>
+                        <button type="button" class="primary-button" id="addDirectoryObjectButton">+ Добавить объект</button>
+                    </div>
+                    <div class="contractor-toolbar">
+                        <input type="search" id="objectSearchInput" placeholder="Поиск по наименованию объекта...">
+                        <span id="objectCount"></span>
+                    </div>
+                    <div id="objectList" class="category-list"><div class="category-loading">Загрузка объектов...</div></div>
+                </div>
+                <div id="categoriesPanel" hidden>
                     <div class="category-header"><div><h2>Категории объектов</h2><p>Основные категории защищены. Подкатегории можно изменять внутри «Прочее».</p></div></div>
                     <div id="categoryList" class="category-list"><div class="category-loading">Загрузка категорий...</div></div>
                 </div>
@@ -136,9 +147,6 @@
         <section class="details-section" id="newObjectSection" hidden>
             <h3>Добавление объекта</h3>
             <label class="form-label">Наименование объекта<textarea id="newObjectName" rows="4"></textarea></label>
-            <label class="form-label">Категория объекта<select id="objectCategory"><option value="">Выберите категорию</option></select></label>
-            <label class="form-label" id="objectSubcategoryLabel" hidden>Подкатегория<select id="objectSubcategory"><option value="">Выберите подкатегорию</option></select></label>
-            <label class="form-label">Производственные организации (ПО)<select id="objectPo" multiple size="5"></select></label>
             <label class="form-label">Комментарий<textarea id="objectComment" rows="3" placeholder="Необязательно"></textarea></label>
         </section>
     </div>
@@ -164,6 +172,17 @@
     <div id="contractorList" class="contractor-list"><div class="category-loading">Загрузка организаций...</div></div>
   </section>
 </section>
+<div class="modal-overlay" id="objectDirectoryModal" hidden>
+  <div class="modal category-modal">
+    <div class="modal-header"><h2 id="objectDirectoryModalTitle">Добавить объект</h2><button type="button" class="modal-close" id="objectDirectoryModalClose">×</button></div>
+    <div class="modal-body">
+      <label class="form-label">Наименование объекта *<textarea id="objectDirectoryNameInput" rows="4" maxlength="1000" placeholder="Введите полное наименование объекта"></textarea></label>
+      <div class="database-status error" id="objectDirectoryModalError" hidden></div>
+    </div>
+    <div class="modal-footer"><button type="button" class="secondary-button" id="objectDirectoryModalCancel">Отмена</button><button type="button" class="primary-button" id="objectDirectoryModalSave">Добавить</button></div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="categoryModal" hidden>
   <div class="modal category-modal">
     <div class="modal-header"><h2 id="categoryModalTitle">Добавить подкатегорию</h2><button type="button" class="modal-close" id="categoryModalClose">×</button></div>
@@ -229,6 +248,17 @@
       <label class="form-label">Телефон<input type="text" id="employeePhoneInput" maxlength="30" placeholder="+7 ..."></label>
       <label class="form-label">Экипаж<select id="employeeCrewSelect"><option value="">Не назначен</option></select></label>
       <div class="employee-crew-preview" id="employeeCrewPreview" hidden></div>
+      <section class="employee-assignments" id="employeeAssignmentsSection" hidden>
+        <div class="employee-assignments-head"><div><strong>Назначения</strong> <span id="employeeObjectsCount">Объектов: 0</span></div><button type="button" class="secondary-button" id="addAssignmentButton">+ Добавить назначение</button></div>
+        <div id="employeeAssignmentsList" class="employee-assignments-list"></div>
+        <div id="assignmentEditor" class="assignment-editor" hidden>
+          <label class="form-label">Объект<select id="assignmentObjectSelect"><option value="">Выберите объект</option></select></label>
+          <label class="form-label">ПО<select id="assignmentPoSelect"><option value="">Выберите ПО</option></select></label>
+          <label class="form-label">Категория<select id="assignmentCategorySelect"><option value="">Выберите категорию</option></select></label>
+          <div class="assignment-editor-actions"><button type="button" class="secondary-button" id="assignmentCancelButton">Отмена</button><button type="button" class="primary-button" id="assignmentSaveButton">Добавить</button></div>
+          <div class="database-status error" id="assignmentError" hidden></div>
+        </div>
+      </section>
       <div class="database-status error" id="employeeModalError" hidden></div>
     </div>
     <div class="modal-footer"><button type="button" class="secondary-button" id="employeeModalCancel">Отмена</button><button type="button" class="primary-button" id="employeeModalSave">Добавить</button></div>
@@ -236,6 +266,6 @@
 </div>
 <div class="modal-overlay" id="positionModal" hidden><div class="modal category-modal"><div class="modal-header"><h2 id="positionModalTitle">Добавить должность</h2><button type="button" class="modal-close" id="positionModalClose">×</button></div><div class="modal-body"><label class="form-label">Название должности<input type="text" id="positionNameInput" maxlength="255" placeholder="Введите название должности"></label><label class="form-label">Описание действий<textarea id="positionDescriptionInput" rows="6" placeholder="Введите описание действий для этой должности"></textarea></label><div class="database-status error" id="positionModalError" hidden></div></div><div class="modal-footer"><button type="button" class="secondary-button" id="positionModalCancel">Отмена</button><button type="button" class="primary-button" id="positionModalSave">Добавить</button></div></div></div>
 <div class="modal-overlay" id="modal" hidden><div class="modal"><div class="modal-header"><h2>Требуется согласование</h2><button class="modal-close" id="modalClose" aria-label="Закрыть">×</button></div><div class="modal-body"><div class="source-value"><span>Значение из Word</span><strong>Трофимов Сергей Николаевич</strong></div><h3>Возможное совпадение</h3><label class="candidate"><input type="radio" name="candidate" checked><div><strong>Трофимов Сергей Николаевич</strong><span>Инженер СК</span></div><b>98%</b></label></div><div class="modal-footer"><button class="secondary-button">Добавить нового</button><button class="primary-button">Связать</button></div></div></div>
-<script src="/static/js/processing.js?v=20260924-9"></script>
+<script src="/static/js/processing.js?v=20260925-objects-crud1"></script>
 </body>
 </html>

@@ -118,7 +118,7 @@ body{background:var(--bg);font-size:14px}.sidebar{width:228px}.main{margin-left:
 .employee-toolbar input:focus{outline:none;border-color:var(--brand)}
 #employeeCount{font-size:12px;color:var(--muted);margin-left:auto}
 .employee-list{border:1px solid var(--line);border-radius:9px;overflow:hidden}
-.employee-table-header,.employee-table-row{display:grid;grid-template-columns:minmax(220px,1.35fr) minmax(240px,1.25fr) 150px 130px 92px;gap:14px;align-items:center}
+.employee-table-header,.employee-table-row{display:grid;grid-template-columns:minmax(220px,1.35fr) minmax(240px,1.25fr) 150px 130px 80px 92px;gap:14px;align-items:center}
 .employee-table-header{padding:11px 14px;background:#f8fafb;border-bottom:1px solid var(--line);font-size:12px;color:#66737d}
 .employee-table-row{padding:12px 14px;border-bottom:1px solid #edf1f3;background:#fff;font-size:13px}
 .employee-table-row:last-child{border-bottom:0}.employee-table-row:hover{background:#fafcfd}
@@ -128,8 +128,8 @@ body{background:var(--bg);font-size:14px}.sidebar{width:228px}.main{margin-left:
 .employee-modal .form-label input:focus,.employee-modal .form-label select:focus,.employee-modal .form-label textarea:focus{outline:none;border-color:var(--brand)}
 #employeeActionDescription{background:#f7f9fa;color:#5f6b71;resize:vertical}
 .employee-crew-preview{margin:-5px 0 17px;padding:10px 12px;border-radius:7px;background:#f5f8f9;color:#647178;font-size:12px;line-height:1.5}
-@media(max-width:1050px){.employee-table-header,.employee-table-row{grid-template-columns:minmax(190px,1.3fr) minmax(210px,1.2fr) 120px 100px 82px}}
-@media(max-width:800px){.employee-table-header{display:none}.employee-table-row{grid-template-columns:1fr auto}.employee-position,.employee-phone,.employee-crew{grid-column:1/-1}.employee-toolbar{align-items:stretch;flex-direction:column}.employee-toolbar input{max-width:none}#employeeCount{margin-left:0}}
+@media(max-width:1050px){.employee-table-header,.employee-table-row{grid-template-columns:minmax(190px,1.3fr) minmax(210px,1.2fr) 120px 100px 70px 82px}}
+@media(max-width:800px){.employee-table-header{display:none}.employee-table-row{grid-template-columns:1fr auto}.employee-position,.employee-phone,.employee-crew,.employee-objects-count{grid-column:1/-1}.employee-objects-count::before{content:"Объектов: ";color:#7d8a90}.employee-toolbar{align-items:stretch;flex-direction:column}.employee-toolbar input{max-width:none}#employeeCount{margin-left:0}}
 
 
 /* ===== Crews ===== */
@@ -176,3 +176,19 @@ body{background:var(--bg);font-size:14px}.sidebar{width:228px}.main{margin-left:
 .contractor-modal{width:610px}
 .contractor-modal .form-label input{width:100%;margin-top:7px;border:1px solid #ccd5da;border-radius:7px;padding:10px;background:#fff;font:inherit}
 .contractor-modal .form-label input:focus{outline:none;border-color:var(--brand)}
+
+/* ===== Employee assignments ===== */
+.employee-modal{width:min(820px,calc(100vw - 32px))}
+.employee-assignments{margin-top:18px;padding-top:18px;border-top:1px solid var(--line)}
+.employee-assignments-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
+#employeeObjectsCount{font-size:12px;color:var(--muted);margin-left:10px}
+.employee-assignments-list{border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.assignment-row{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;padding:12px 14px;border-bottom:1px solid #edf1f3}
+.assignment-row:last-child{border-bottom:0}.assignment-main{display:grid;gap:5px;min-width:0}
+.assignment-object{font-size:13px;overflow-wrap:anywhere}.assignment-po,.assignment-category{font-size:12px;color:#5f6b71}
+.assignment-empty{padding:14px;color:var(--muted);font-size:13px}
+.assignment-editor{margin-top:12px;padding:14px;border:1px solid var(--line);border-radius:8px;background:#f8fafb}
+.assignment-editor-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+@media(max-width:700px){.employee-assignments-head{align-items:stretch;flex-direction:column}.assignment-row{grid-template-columns:1fr}}
+
+.employee-objects-count{font-weight:600;color:#46535c;text-align:center}
