@@ -101,29 +101,40 @@ function updateStatistics(result) {
     });
 }
 
+function getFinalReportStatus(report) {
+    if (report.status === "error") return "error";
+
+    const statuses = [
+        report.employee_status,
+        report.object_status,
+        report.general_contractor_status,
+    ];
+
+    // Пустой субподрядчик не мешает завершению проверки.
+    if (report.subcontractor) {
+        statuses.push(report.subcontractor_status);
+    }
+
+    if (statuses.includes("similar")) return "needs_approval";
+    if (statuses.includes("new")) return "has_new";
+
+    const complete = statuses.every(status => status === "found");
+    return complete ? "verified" : "attention";
+}
+
 function buildStatus(report) {
     const badge = document.createElement("span");
-    let status = "ok";
-    let label = "✓ OK";
-    if (report.status === "error") {
-        status = "error";
-        label = "Ошибка";
-    } else if (report.employee_status === "similar") {
-        status = "warning";
-        label = "Согласовать сотрудника";
-    } else if (report.employee_status === "new") {
-        status = "warning";
-        label = "Новый сотрудник";
-    } else if (report.object_status === "similar") {
-        status = "warning";
-        label = "Согласовать объект";
-    } else if (report.object_status === "new") {
-        status = "warning";
-        label = "Новый объект";
-    } else if (report.status === "warning") {
-        status = "warning";
-        label = "Требует внимания";
-    }
+    const finalStatus = getFinalReportStatus(report);
+
+    const view = {
+        error: ["error", "Ошибка"],
+        needs_approval: ["warning", "Требует согласования"],
+        has_new: ["warning", "Есть новые данные"],
+        verified: ["ok", "✓ Проверен"],
+        attention: ["warning", "Требует внимания"],
+    };
+
+    const [status, label] = view[finalStatus] || view.attention;
     badge.className = `status-badge ${status}`;
     badge.textContent = label;
     return badge;
@@ -136,10 +147,10 @@ function renderReports() {
         if (query && ![report.filename, report.full_name, report.object_name]
             .some(value => (value || "").toLocaleLowerCase("ru").includes(query))) return;
         if (dateFilter.value !== "all" && report.report_date !== dateFilter.value) return;
-        if (statusFilter.value === "problem" && report.status === "ok") return;
-        if (statusFilter.value === "new" && report.object_status !== "new" && report.employee_status !== "new") return;
-        if (statusFilter.value === "ok" && report.status !== "ok") return;
-        if (statusFilter.value === "error" && report.status !== "error") return;
+        if (statusFilter.value === "problem" && getFinalReportStatus(report) === "verified") return;
+        if (statusFilter.value === "new" && getFinalReportStatus(report) !== "has_new") return;
+        if (statusFilter.value === "ok" && getFinalReportStatus(report) !== "verified") return;
+        if (statusFilter.value === "error" && getFinalReportStatus(report) !== "error") return;
         const row = document.createElement("tr");
         [index + 1, report.full_name, report.position, report.report_date,
             report.object_name, report.general_contractor, report.subcontractor]
@@ -243,7 +254,144 @@ function setDetailsValue(id, value) {
     document.getElementById(id).textContent = value || "—";
 }
 
-function buildCheckRow(label, status, parsedValue, candidates = []) {
+function getCandidateEntity(candidate) {
+    return candidate?.employee || candidate?.object || candidate?.po || candidate || {};
+}
+
+function getCandidateName(candidate) {
+    const entity = getCandidateEntity(candidate);
+    return entity.full_name || entity.name || "—";
+}
+
+function getCandidateId(candidate) {
+    return getCandidateEntity(candidate).id ?? null;
+}
+
+function recalculateReportStatus(report) {
+    const finalStatus = getFinalReportStatus(report);
+    report.status = finalStatus === "error"
+        ? "error"
+        : finalStatus === "verified"
+            ? "ok"
+            : "warning";
+}
+
+function confirmCandidate(report, config, candidate) {
+    const id = getCandidateId(candidate);
+    const name = getCandidateName(candidate);
+
+    if (config.idField) report[config.idField] = id;
+    report[config.statusField] = "found";
+    report[config.resolvedField] = {id, name};
+
+    if (Array.isArray(report.problems)) {
+        report.problems = report.problems.filter(problem => {
+            const value = String(problem || "").toLocaleLowerCase("ru");
+            return !(config.problemWords || []).some(word => value.includes(word));
+        });
+    }
+
+    recalculateReportStatus(report);
+    renderReports();
+    openDetails(report);
+}
+
+
+async function apiPost(url, payload) {
+    const response = await fetch(url, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload),
+    });
+
+    let data = {};
+    try {
+        data = await response.json();
+    } catch (_) {}
+
+    if (!response.ok) {
+        throw new Error(data.message || data.detail || `HTTP ${response.status}`);
+    }
+    return data;
+}
+
+async function resolvePositionId(positionName) {
+    if (!positionName) return null;
+
+    const response = await fetch("/api/positions");
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    const normalized = String(positionName).trim().toLocaleLowerCase("ru");
+
+    const exact = (data.items || []).find(item =>
+        String(item.name || "").trim().toLocaleLowerCase("ru") === normalized
+    );
+
+    return exact?.id ?? null;
+}
+
+async function addNewDatabaseItem(report, config, button, message) {
+    const sourceValue = report[config.parsedField];
+    if (!sourceValue) return;
+
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Добавление...";
+
+    try {
+        let result;
+        let id = null;
+        let name = sourceValue;
+
+        if (config.kind === "employee") {
+            const positionId = await resolvePositionId(report.position);
+            result = await apiPost("/api/employees", {
+                full_name: sourceValue,
+                position_id: positionId,
+                phone: null,
+                crew_id: null,
+            });
+            id = result.id ?? null;
+        } else if (config.kind === "object") {
+            result = await apiPost("/api/objects", {name: sourceValue});
+            id = result.object?.id ?? result.id ?? null;
+            name = result.object?.name || sourceValue;
+        } else if (config.kind === "po") {
+            result = await apiPost("/api/po-types", {name: sourceValue});
+            id = result.item?.id ?? result.id ?? null;
+            name = result.item?.name || sourceValue;
+        } else {
+            throw new Error("Неизвестный тип справочника");
+        }
+
+        if (config.idField) report[config.idField] = id;
+        report[config.statusField] = "found";
+        report[config.resolvedField] = {id, name, added: true};
+
+        if (Array.isArray(report.problems)) {
+            report.problems = report.problems.filter(problem => {
+                const value = String(problem || "").toLocaleLowerCase("ru");
+                return !(config.problemWords || []).some(word => value.includes(word));
+            });
+        }
+
+        recalculateReportStatus(report);
+        renderReports();
+        openDetails(report);
+    } catch (error) {
+        button.disabled = false;
+        button.textContent = originalText;
+        message.textContent = `Ошибка: ${error.message}`;
+    }
+}
+
+function buildCheckRow(report, config) {
+    const status = report[config.statusField] || "not_checked";
+    const parsedValue = report[config.parsedField];
+    const candidates = report[config.candidatesField] || [];
+    const resolved = report[config.resolvedField];
+
     const row = document.createElement("div");
     row.style.padding = "12px 0";
     row.style.borderBottom = "1px solid rgba(148, 163, 184, .25)";
@@ -255,12 +403,12 @@ function buildCheckRow(label, status, parsedValue, candidates = []) {
     header.style.alignItems = "center";
 
     const title = document.createElement("strong");
-    title.textContent = label;
+    title.textContent = config.label;
     header.append(title);
 
     const badge = document.createElement("span");
     const labels = {
-        found: "НАЙДЕНО",
+        found: resolved?.added ? "ДОБАВЛЕНО" : resolved ? "СОГЛАСОВАНО" : "НАЙДЕНО",
         similar: "ПОХОЖЕЕ",
         new: "НОВОЕ",
         not_checked: "НЕ УКАЗАНО",
@@ -275,41 +423,404 @@ function buildCheckRow(label, status, parsedValue, candidates = []) {
     value.textContent = parsedValue || "—";
     row.append(value);
 
-    if (status === "found") {
+    if (resolved) {
+        const note = document.createElement("small");
+        note.style.display = "block";
+        note.style.marginTop = "6px";
+        note.textContent = resolved.added ? `Добавлено в базу: ${resolved.name}` : `Выбрано из базы: ${resolved.name}`;
+        row.append(note);
+    } else if (status === "found") {
         const note = document.createElement("small");
         note.textContent = "Совпадение найдено в базе данных.";
         row.append(note);
     } else if (status === "similar" && candidates.length) {
         const note = document.createElement("small");
-        note.textContent = "Похожие записи в базе:";
+        note.style.display = "block";
+        note.style.marginTop = "6px";
+        note.textContent = "Выберите правильную запись из базы:";
         row.append(note);
-        const list = document.createElement("ul");
-        list.style.margin = "6px 0 0 18px";
-        candidates.forEach(candidate => {
-            const item = document.createElement("li");
-            const entity = candidate.employee || candidate.object || candidate.po || candidate;
-            const name = entity.full_name || entity.name || "—";
-            const score = typeof candidate.similarity === "number" ? ` (${Math.round(candidate.similarity * 100)}%)` : "";
-            item.textContent = name + score;
-            list.append(item);
+
+        const choices = document.createElement("div");
+        choices.style.display = "grid";
+        choices.style.gap = "8px";
+        choices.style.marginTop = "8px";
+        const groupName = `match-${activeReportIndex}-${config.statusField}`;
+
+        candidates.forEach((candidate, index) => {
+            const option = document.createElement("label");
+            option.style.display = "flex";
+            option.style.alignItems = "flex-start";
+            option.style.gap = "8px";
+            option.style.cursor = "pointer";
+
+            const radio = document.createElement("input");
+            radio.type = "radio";
+            radio.name = groupName;
+            radio.value = String(index);
+
+            const caption = document.createElement("span");
+            const score = typeof candidate.similarity === "number"
+                ? ` — ${Math.round(candidate.similarity * 100)}%`
+                : "";
+            caption.textContent = getCandidateName(candidate) + score;
+
+            option.append(radio, caption);
+            choices.append(option);
         });
-        row.append(list);
+
+        const actions = document.createElement("div");
+        actions.style.display = "flex";
+        actions.style.gap = "10px";
+        actions.style.flexWrap = "wrap";
+        actions.style.marginTop = "10px";
+
+        const confirmButton = document.createElement("button");
+        confirmButton.type = "button";
+        confirmButton.className = "secondary-button";
+        confirmButton.textContent = "Выбрать и заменить";
+        confirmButton.disabled = true;
+
+        const addAsNewButton = document.createElement("button");
+        addAsNewButton.type = "button";
+        addAsNewButton.className = "secondary-button";
+        addAsNewButton.textContent = "Добавить как новый";
+
+        const message = document.createElement("small");
+        message.style.display = "block";
+        message.style.width = "100%";
+        message.style.marginTop = "6px";
+
+        choices.addEventListener("change", () => {
+            confirmButton.disabled = !choices.querySelector('input[type="radio"]:checked');
+        });
+
+        confirmButton.addEventListener("click", () => {
+            const selected = choices.querySelector('input[type="radio"]:checked');
+            if (!selected) return;
+            const candidate = candidates[Number(selected.value)];
+            if (candidate) confirmCandidate(report, config, candidate);
+        });
+
+        addAsNewButton.addEventListener("click", () => {
+            addNewDatabaseItem(report, config, addAsNewButton, message);
+        });
+
+        actions.append(confirmButton, addAsNewButton, message);
+        row.append(choices, actions);
     } else if (status === "similar") {
         const note = document.createElement("small");
-        note.textContent = "Найдено похожее значение. Требуется согласование.";
+        note.textContent = "Найдено похожее значение, но варианты для выбора не получены.";
         row.append(note);
     } else if (status === "new") {
         const note = document.createElement("small");
+        note.style.display = "block";
         note.textContent = "Такой записи в базе данных нет.";
         row.append(note);
+
+        if (config.kind === "employee" && report.position) {
+            const positionNote = document.createElement("small");
+            positionNote.style.display = "block";
+            positionNote.style.marginTop = "6px";
+            positionNote.textContent = `Должность из отчёта: ${report.position}`;
+            row.append(positionNote);
+        }
+
+        const message = document.createElement("small");
+        message.style.display = "block";
+        message.style.marginTop = "6px";
+
+        const addButton = document.createElement("button");
+        addButton.type = "button";
+        addButton.className = "secondary-button";
+        addButton.style.marginTop = "10px";
+        addButton.textContent = "Добавить в базу";
+
+        addButton.addEventListener("click", () => {
+            addNewDatabaseItem(report, config, addButton, message);
+        });
+
+        row.append(addButton, message);
     } else if (status === "not_checked") {
         const note = document.createElement("small");
-        note.textContent = "Значение в отчёте не указано — проверка не требуется.";
+        note.textContent = parsedValue ? "Проверка не выполнена." : "Значение в отчёте не указано — проверка не требуется.";
         row.append(note);
     }
 
     return row;
 }
+
+
+async function getReportAssignmentPoEntries(report) {
+    const entries = [];
+
+    if (report.general_contractor && report.general_contractor_id) {
+        entries.push({
+            role: "ПО",
+            source: "Генподрядчик",
+            id: Number(report.general_contractor_id),
+            name: report.resolved_general_contractor?.name || report.general_contractor,
+        });
+    }
+
+    if (report.subcontractor && report.subcontractor_id) {
+        const id = Number(report.subcontractor_id);
+        if (!entries.some(item => item.id === id)) {
+            entries.push({
+                role: "ПО",
+                source: "Субподрядчик",
+                id,
+                name: report.resolved_subcontractor?.name || report.subcontractor,
+            });
+        }
+    }
+
+    return entries;
+}
+
+function flattenAssignmentCategories(items) {
+    const result = [];
+    (items || []).forEach(parent => {
+        result.push({
+            id: parent.id,
+            name: parent.name,
+            label: parent.name,
+        });
+        (parent.children || []).forEach(child => {
+            result.push({
+                id: child.id,
+                name: child.name,
+                label: `${parent.name} → ${child.name}`,
+            });
+        });
+    });
+    return result;
+}
+
+async function renderReportAssignment(report, container) {
+    // Keep the resolved assignment together with the report, keyed by PO.
+    const assignmentKey = `${report.employee_id}:${report.object_id}:${report.general_contractor_id}:${report.subcontractor_id}`;
+    if (report.assignment_key !== assignmentKey) {
+        report.assignment_key = assignmentKey;
+        report.assignments = {};
+    }
+    report.assignments ||= {};
+    const section = document.createElement("div");
+    section.style.marginTop = "18px";
+    section.style.paddingTop = "14px";
+    section.style.borderTop = "1px solid rgba(148, 163, 184, .35)";
+
+    const title = document.createElement("h4");
+    title.textContent = "Назначение";
+    section.append(title);
+    container.append(section);
+
+    if (getFinalReportStatus(report) !== "verified") {
+        const note = document.createElement("small");
+        note.textContent = "Сначала завершите проверку Инженера, Объекта и ПО.";
+        section.append(note);
+        return;
+    }
+
+    if (!report.employee_id || !report.object_id) {
+        const note = document.createElement("small");
+        note.textContent = "Не удалось определить Инженера или Объект.";
+        section.append(note);
+        return;
+    }
+
+    const poEntries = await getReportAssignmentPoEntries(report);
+    if (!poEntries.length) {
+        const note = document.createElement("small");
+        note.textContent = "ПО для назначения не определено.";
+        section.append(note);
+        return;
+    }
+
+    const loading = document.createElement("small");
+    loading.textContent = "Проверяем назначение...";
+    section.append(loading);
+
+    try {
+        const response = await fetch(`/api/employees/${report.employee_id}/assignments`);
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.message || data.detail || `HTTP ${response.status}`);
+        }
+        loading.remove();
+
+        const assignments = Array.isArray(data.items) ? data.items : [];
+        const objectId = Number(report.object_id);
+
+        for (const po of poEntries) {
+            const block = document.createElement("div");
+            block.style.marginTop = "12px";
+            block.style.padding = "12px";
+            block.style.border = "1px solid rgba(148, 163, 184, .35)";
+            block.style.borderRadius = "8px";
+
+            const summary = document.createElement("div");
+            summary.style.display = "grid";
+            summary.style.gap = "4px";
+
+            [
+                ["Инженер", report.resolved_employee?.name || report.full_name],
+                ["Объект", report.resolved_object?.name || report.object_name],
+                ["ПО", po.name],
+            ].forEach(([label, value]) => {
+                const line = document.createElement("div");
+                const strong = document.createElement("strong");
+                strong.textContent = `${label}: `;
+                line.append(strong, document.createTextNode(value || "—"));
+                summary.append(line);
+            });
+            block.append(summary);
+
+            const matches = assignments.filter(item =>
+                Number(item.object_id) === objectId &&
+                Number(item.po_id) === Number(po.id)
+            );
+
+            if (matches.length === 1) {
+                report.assignments[po.id] = matches[0];
+                const ok = document.createElement("div");
+                ok.style.marginTop = "10px";
+                const strong = document.createElement("strong");
+                strong.textContent = "✓ Назначение найдено";
+                ok.append(strong);
+
+                const category = document.createElement("div");
+                category.style.marginTop = "6px";
+                category.textContent = `Категория: ${matches[0].category_name || "—"}`;
+                ok.append(category);
+                block.append(ok);
+            } else if (matches.length > 1) {
+                const warning = document.createElement("div");
+                warning.style.marginTop = "10px";
+                const strong = document.createElement("strong");
+                strong.textContent = "⚠ Найдено несколько назначений";
+                warning.append(strong);
+
+                const select = document.createElement("select");
+                select.setAttribute("aria-label", "Категория найденного назначения");
+                select.add(new Option("Выберите категорию назначения", ""));
+                matches.forEach(item => select.add(new Option(item.category_name || "—", item.id)));
+                const previous = report.assignments[po.id];
+                if (previous && matches.some(item => item.id === previous.id)) {
+                    select.value = String(previous.id);
+                } else {
+                    delete report.assignments[po.id];
+                }
+                const confirm = document.createElement("button");
+                confirm.type = "button";
+                confirm.className = "secondary-button";
+                confirm.textContent = "Выбрать назначение";
+                const message = document.createElement("div");
+                confirm.addEventListener("click", () => {
+                    const selected = matches.find(item => String(item.id) === select.value);
+                    if (!selected) {
+                        message.textContent = "Выберите категорию назначения.";
+                        return;
+                    }
+                    report.assignments[po.id] = selected;
+                    message.textContent = `✓ Выбрана категория: ${selected.category_name}`;
+                });
+                warning.append(select, confirm, message);
+                block.append(warning);
+            } else {
+                delete report.assignments[po.id];
+                const warning = document.createElement("div");
+                warning.style.marginTop = "10px";
+                const strong = document.createElement("strong");
+                strong.textContent = "⚠ Назначение не найдено";
+                warning.append(strong);
+                block.append(warning);
+
+                const editor = document.createElement("div");
+                editor.style.marginTop = "10px";
+
+                const label = document.createElement("label");
+                label.style.display = "block";
+                label.style.marginBottom = "6px";
+                label.textContent = "Категория";
+
+                const select = document.createElement("select");
+                select.setAttribute("aria-label", "Категория нового назначения");
+                select.style.width = "100%";
+                select.innerHTML = '<option value="">Выберите категорию</option>';
+
+                const categoryResponse = await fetch("/api/object-categories");
+                const categoryData = await categoryResponse.json();
+                if (!categoryResponse.ok) {
+                    throw new Error(categoryData.message || "Не удалось загрузить категории");
+                }
+
+                flattenAssignmentCategories(categoryData.items || []).forEach(item => {
+                    select.add(new Option(item.label, item.id));
+                });
+
+                const message = document.createElement("small");
+                message.style.display = "block";
+                message.style.marginTop = "6px";
+
+                const save = document.createElement("button");
+                save.type = "button";
+                save.className = "secondary-button";
+                save.style.marginTop = "10px";
+                save.textContent = "Сохранить назначение";
+
+                save.addEventListener("click", async () => {
+                    const categoryId = Number(select.value);
+                    if (!categoryId) {
+                        message.textContent = "Выберите категорию.";
+                        return;
+                    }
+
+                    const oldText = save.textContent;
+                    save.disabled = true;
+                    select.disabled = true;
+                    save.textContent = "Сохранение...";
+                    message.textContent = "";
+
+                    try {
+                        const result = await apiPost(`/api/employees/${report.employee_id}/assignments`, {
+                            object_id: Number(report.object_id),
+                            po_id: Number(po.id),
+                            category_id: categoryId,
+                        });
+                        report.assignments[po.id] = {
+                            id: result.item.id,
+                            employee_id: Number(report.employee_id),
+                            object_id: Number(report.object_id),
+                            po_id: Number(po.id),
+                            category_id: categoryId,
+                            category_name: select.selectedOptions[0].textContent,
+                        };
+                        if (section.isConnected && detailsPanel.classList.contains("open")) {
+                            openDetails(report);
+                        }
+                        if (typeof loadEmployees === "function" && typeof employeeItems !== "undefined" && employeeItems.length) {
+                            loadEmployees().catch(() => {});
+                        }
+                    } catch (error) {
+                        message.textContent = `Ошибка: ${error.message}`;
+                        save.disabled = false;
+                        select.disabled = false;
+                        save.textContent = oldText;
+                    }
+                });
+
+                editor.append(label, select, save, message);
+                block.append(editor);
+            }
+
+            section.append(block);
+        }
+    } catch (error) {
+        loading.textContent = `Не удалось проверить назначение: ${error.message}`;
+        section.append(loading);
+    }
+}
+
 
 function openDetails(report) {
     clearTimeout(closeDetailsTimer);
@@ -328,14 +839,16 @@ function openDetails(report) {
     databaseStatus.replaceChildren();
 
     databaseStatus.append(
-        buildCheckRow("Сотрудник", report.employee_status, report.full_name, report.employee_candidates || []),
-        buildCheckRow("Объект", report.object_status, report.object_name, report.object_candidates || []),
-        buildCheckRow("Генподрядчик", report.general_contractor_status, report.general_contractor, report.general_contractor_candidates || []),
-        buildCheckRow("Субподрядчик", report.subcontractor_status || (report.subcontractor ? "not_checked" : "not_checked"), report.subcontractor, report.subcontractor_candidates || [])
+        buildCheckRow(report, {label:"Инженер",kind:"employee",statusField:"employee_status",parsedField:"full_name",candidatesField:"employee_candidates",resolvedField:"resolved_employee",idField:"employee_id",problemWords:["сотрудник","фио","инженер"]}),
+        buildCheckRow(report, {label:"Объект",kind:"object",statusField:"object_status",parsedField:"object_name",candidatesField:"object_candidates",resolvedField:"resolved_object",idField:"object_id",problemWords:["объект"]}),
+        buildCheckRow(report, {label:"Генподрядчик",kind:"po",statusField:"general_contractor_status",parsedField:"general_contractor",candidatesField:"general_contractor_candidates",resolvedField:"resolved_general_contractor",idField:"general_contractor_id",problemWords:["генподряд"]}),
+        buildCheckRow(report, {label:"Субподрядчик",kind:"po",statusField:"subcontractor_status",parsedField:"subcontractor",candidatesField:"subcontractor_candidates",resolvedField:"resolved_subcontractor",idField:"subcontractor_id",problemWords:["субподряд"]})
     );
 
-    // На этом этапе окно только показывает результаты сравнения.
-    // Согласование и добавление новых записей подключим отдельным шагом.
+    renderReportAssignment(report, databaseStatus);
+
+    // Согласование действует только для текущего результата обработки.
+    // Исходные значения парсера из Word не изменяются.
     newObjectSection.hidden = true;
     addObjectButton.hidden = true;
 
