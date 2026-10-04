@@ -1,3 +1,5 @@
+from datetime import date, datetime
+from typing import Literal
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog
@@ -7,6 +9,12 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
+from app.api.daily_control import router as daily_control_router
+from app.api.known_values import router as known_values_router
+from app.api.luvr_history import router as luvr_history_router
+from app.api.rail_tickets import router as rail_tickets_router
+from app.api.luvr_calendar import router as luvr_calendar_router
+from app.api.luvr_month import router as luvr_month_router
 
 from app.services.processing_service import list_report_files, process_folder
 from app.repositories.assignments import (
@@ -25,6 +33,7 @@ from app.repositories.employees import (
     create_employee,
     update_employee,
     delete_employee,
+    set_employee_archived,
     create_position,
     rename_position,
     delete_position,
@@ -47,6 +56,12 @@ from app.repositories.objects import (
 BASE_DIR = Path(__file__).resolve().parent
 
 app = FastAPI(title="Техресурс")
+app.include_router(daily_control_router)
+app.include_router(known_values_router)
+app.include_router(luvr_history_router)
+app.include_router(rail_tickets_router)
+app.include_router(luvr_calendar_router)
+app.include_router(luvr_month_router)
 
 app.mount(
     "/static",
@@ -156,6 +171,10 @@ class EmployeeRequest(BaseModel):
     position_id: int | None = None
     phone: str | None = None
     crew_id: int | None = None
+    dismissal_date: date | None = None
+    nrs_number: str | None = None
+    max_shift_days: int | None = Field(default=None, strict=True, gt=0, le=2147483647)
+    max_off_shift_days: int | None = Field(default=None, strict=True, gt=0, le=2147483647)
 
 
 class EmployeeAssignmentRequest(BaseModel):
@@ -164,11 +183,27 @@ class EmployeeAssignmentRequest(BaseModel):
     category_id: int
 
 
+class EmployeeArchiveState(BaseModel):
+    id: int
+    full_name: str
+    is_archived: bool
+    archived_at: datetime | None
+    dismissal_date: date | None
+
+
+class EmployeeArchiveResponse(BaseModel):
+    status: Literal["ok"] = "ok"
+    item: EmployeeArchiveState
+
+
 
 
 class PositionRequest(BaseModel):
     name: str = Field(min_length=1)
     action_description: str | None = None
+    specialty: str | None = None
+    work_location: Literal["OBJECT", "OFFICE"] | None = None
+    work_schedule: Literal["SHIFT", "FIVE_TWO"] | None = None
 
 
 @app.post("/api/process-folder")
@@ -418,6 +453,7 @@ def add_position(payload: PositionRequest):
         item = create_position(
             name=payload.name,
             action_description=payload.action_description,
+            **payload.model_dump(include={"specialty", "work_location", "work_schedule"}, exclude_unset=True),
         )
 
         return {
@@ -445,6 +481,7 @@ def update_position(
             position_id=position_id,
             name=payload.name,
             action_description=payload.action_description,
+            **payload.model_dump(include={"specialty", "work_location", "work_schedule"}, exclude_unset=True),
         )
 
         return {
@@ -483,10 +520,10 @@ def remove_position(position_id: int):
 
 
 @app.get("/api/employees")
-def employees():
+def employees(archived: bool = False, include_archived: bool = False):
     return {
         "status": "ok",
-        "items": get_employees(),
+        "items": get_employees(archived=None if include_archived else archived),
     }
 
 
@@ -498,6 +535,7 @@ def add_employee(payload: EmployeeRequest):
             position_id=payload.position_id,
             phone=payload.phone,
             crew_id=payload.crew_id,
+            **payload.model_dump(include={"nrs_number", "max_shift_days", "max_off_shift_days", "dismissal_date"}, exclude_unset=True),
         )
 
         return {
@@ -527,6 +565,7 @@ def edit_employee(
             position_id=payload.position_id,
             phone=payload.phone,
             crew_id=payload.crew_id,
+            **payload.model_dump(include={"nrs_number", "max_shift_days", "max_off_shift_days", "dismissal_date"}, exclude_unset=True),
         )
 
         return {
@@ -544,7 +583,7 @@ def edit_employee(
         )
 
 
-@app.delete("/api/employees/{employee_id}")
+@app.delete("/api/employees/{employee_id}", deprecated=True, summary="Физическое удаление отключено: используйте архив")
 def remove_employee(employee_id: int):
     try:
         return {
@@ -554,12 +593,30 @@ def remove_employee(employee_id: int):
 
     except ValueError as error:
         return JSONResponse(
-            status_code=400,
+            status_code=getattr(error, "status_code", 400),
             content={
                 "status": "error",
                 "message": str(error),
             },
         )
+
+
+def _archive_employee(employee_id, archived):
+    try:
+        return {"status": "ok", "item": set_employee_archived(employee_id, archived)}
+    except ValueError as error:
+        return JSONResponse(status_code=getattr(error, "status_code", 400),
+                            content={"status": "error", "message": str(error)})
+
+
+@app.post("/api/employees/{employee_id}/archive", response_model=EmployeeArchiveResponse, summary="Перевести сотрудника в архив без удаления истории")
+def archive_employee(employee_id: int):
+    return _archive_employee(employee_id, True)
+
+
+@app.post("/api/employees/{employee_id}/restore", response_model=EmployeeArchiveResponse, summary="Восстановить сотрудника, сохранив дату увольнения")
+def restore_employee(employee_id: int):
+    return _archive_employee(employee_id, False)
 
 
 @app.get("/api/employees/{employee_id}/assignments")

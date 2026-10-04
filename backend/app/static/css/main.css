@@ -192,3 +192,104 @@ body{background:var(--bg);font-size:14px}.sidebar{width:228px}.main{margin-left:
 @media(max-width:700px){.employee-assignments-head{align-items:stretch;flex-direction:column}.assignment-row{grid-template-columns:1fr}}
 
 .employee-objects-count{font-weight:600;color:#46535c;text-align:center}
+
+.save-results-status{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:12px 0}.save-results-status p{flex:1;min-width:200px;max-height:140px;overflow:auto;white-space:pre-line;overflow-wrap:anywhere;margin:0;font-size:13px}.result-actions{flex-wrap:wrap}
+
+.journal-filters{display:flex;flex-wrap:wrap;align-items:end;gap:12px}.journal-filters label{display:grid;gap:6px;font-size:13px;max-width:100%}.journal-filters input,.journal-filters select{padding:9px;border:1px solid #ccd5da;border-radius:7px;max-width:320px;background:white}.journal-presets{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.journal-group{border-top:1px solid #dfe5e8;margin-top:20px;padding-top:12px}.journal-pair{padding:12px 0}.journal-pair summary{cursor:pointer;color:#087f99;overflow-wrap:anywhere}.journal-pair td{overflow-wrap:anywhere}
+.journal-link{border:0;background:none;color:#087f99;text-decoration:underline;cursor:pointer;font:inherit;padding:0;text-align:left;overflow-wrap:anywhere}.journal-link:focus-visible{outline:2px solid #087f99;outline-offset:3px}.journal-parent{display:block;margin-top:4px;color:#526574}.journal-filters label[hidden]{display:none}
+
+/* Existing objects directory: parent/child hierarchy. */
+/* Shared dialogs: only the central content scrolls; short dialogs retain natural height. */
+.modal{display:flex;flex-direction:column;max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);min-height:0;overflow:hidden;overflow-wrap:anywhere}
+.modal>.modal-header,.modal>.modal-footer{flex-shrink:0;gap:10px}
+.modal>.modal-header h2{min-width:0;overflow-wrap:anywhere}
+.modal>.modal-header .modal-close{flex-shrink:0}
+.modal>.modal-body{flex:1 1 auto;min-height:0;min-width:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain}
+.modal input,.modal select,.modal textarea{min-width:0;max-width:100%}
+.modal .assignment-po,.modal .assignment-category{overflow-wrap:anywhere}
+.modal>.modal-footer{flex-wrap:wrap}
+html:has(.modal-overlay:not([hidden])),html:has(.details-panel.open){overflow:hidden}
+body:has(.modal-overlay:not([hidden])),body:has(.details-panel.open){overflow:hidden}
+/* The report drawer already scrolls internally; preserve that layout. */
+.details-panel{height:100vh;height:100dvh}
+.details-header,.details-footer{flex-shrink:0}
+.details-content{min-height:0;overflow-x:hidden;overscroll-behavior-y:contain}
+
+.object-tree-filters{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0 18px}
+.object-tree-filters label{display:grid;gap:6px;font-size:13px}
+.object-tree-filters select,#subobjectDirectoryParent,#subobjectDirectoryActive{font:inherit;padding:9px;border:1px solid #ccd5da;border-radius:7px;background:white;max-width:100%}
+.object-tree-parent{border-bottom:1px solid var(--line);background:white}
+.object-tree-parent>summary{cursor:pointer;padding:15px;overflow-wrap:anywhere;color:var(--text)}
+.object-tree-parent>summary small{display:block;margin:5px 0 0 18px;color:var(--muted)}
+.object-tree-children{margin:0 18px 0 32px;border-left:2px solid var(--line)}
+.object-tree-child{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid #edf1f3;background:#fbfcfd;overflow-wrap:anywhere}
+.object-tree-child>div{min-width:0}.object-tree-child small{display:block;margin-top:5px;color:var(--muted)}
+.object-tree-actions{display:flex;gap:8px;flex-wrap:wrap;padding:14px 18px 14px 32px}
+#subobjectDirectoryConfirmation{white-space:pre-line;overflow-wrap:anywhere;margin-top:16px}
+#subobjectDirectoryModal select{display:block;width:100%;margin-top:7px}
+@media(max-width:600px){.object-tree-child{align-items:flex-start;flex-direction:column}.object-tree-children{margin-left:16px}}
+
+.position-work-settings{display:block;margin-top:7px;color:var(--muted);font-weight:400;overflow-wrap:anywhere}
+.employee-position-settings{display:grid;gap:6px;padding:12px;background:#f5f8f9;border-radius:7px;margin-bottom:17px;font-size:13px;overflow-wrap:anywhere}
+#employeeShiftLimits[hidden]{display:none}
+
+#employeeLuvrHistory { margin-top: 18px; border-top: 1px solid #dce3ed; padding-top: 14px; }
+#employeeLuvrHistory summary { cursor: pointer; font-weight: 600; }
+.luvr-history-hint { color: #667085; font-size: 13px; }
+.luvr-history-section { padding: 10px 0; border-bottom: 1px solid #dce3ed; }
+.luvr-history-list { margin-top: 10px; }
+.luvr-history-row { padding: 8px 0; overflow-wrap: anywhere; }
+.luvr-history-row small { display: block; white-space: pre-wrap; }
+.luvr-history-row button, .luvr-history-editor button { margin: 6px 8px 0 0; }
+.luvr-history-editor { margin-top: 12px; padding: 12px; background: #f5f7fa; border-radius: 8px; }
+.employee-archive-button { padding: 6px 8px; border: 1px solid #ccd4df; border-radius: 6px; background: #fff; cursor: pointer; font-size: 12px; }
+.employee-archive-button:disabled { opacity: .6; cursor: wait; }
+.employee-toolbar { flex-wrap: wrap; }
+.rail-ticket-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 12px 0; }
+.rail-ticket-actions select { padding: 9px; border: 1px solid #ccd4df; border-radius: 6px; background: #fff; }
+.rail-ticket-card { padding: 16px; border: 1px solid #dce3ed; border-radius: 8px; margin-bottom: 16px; overflow-wrap: anywhere; }
+.rail-ticket-card p { margin: 7px 0; }
+#railTicketDrop { margin-top: 16px; padding: 28px; }
+/* Calendar projection: all cells and diagnostics remain reachable on laptops. */
+.luvr-calendar-scroll { overflow-x: auto; }
+.luvr-calendar-table { width: 100%; border-collapse: collapse; }
+.luvr-calendar-table th, .luvr-calendar-table td { text-align: left; padding: 10px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+.luvr-calendar-table small { display: block; margin-top: 4px; }
+.luvr-calendar-table button { margin: 2px; }
+.luvr-day-manual { background: #f0f9ff; }
+.luvr-day-warning { color: #92400e; margin-top: 5px; }
+.luvr-calendar-editor { padding: 16px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; margin-bottom: 16px; }
+.luvr-calendar-editor label { display: inline-block; margin: 8px; }
+#luvrCalendarEmployee { max-width: 420px; }
+#luvrCalendarError { color: #b91c1c; }
+.luvr-month-scroll { overflow-x: auto; max-width: 100%; }
+.luvr-month-table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; }
+.luvr-month-table th, .luvr-month-table td { padding: 7px; border-bottom: 1px solid #dce3eb; white-space: nowrap; text-align: center; }
+.luvr-month-table th { position: sticky; top: var(--luvr-header-top, 0px); z-index: 3; background: #edf3fa; }
+.luvr-month-table tr > :first-child { position: sticky; left: 0; z-index: 2; min-width: 44px; background: #fff; }
+.luvr-month-table .luvr-name { position: sticky; left: var(--luvr-number-width, 44px); z-index: 2; background: #fff; text-align: left; min-width: 230px; border-right: 1px solid #dce3eb; }
+.luvr-month-table thead tr > :first-child, .luvr-month-table thead .luvr-name { z-index: 4; background: #edf3fa; }
+.luvr-fixed-scroll { position: fixed; bottom: 0; height: 24px; overflow-x: scroll; overflow-y: hidden; background: #fff; border-top: 1px solid #cbd5e1; z-index: 40; }
+.luvr-fixed-scroll[hidden] { display: none; }
+.luvr-fixed-scroll-track { height: 1px; }
+.luvr-month-day { min-width: 38px; min-height: 32px; border: 1px solid #dce3eb; border-radius: 4px; background: transparent; cursor: pointer; }
+.luvr-month-day:hover, .luvr-month-day:focus { background: #e6f0ff; }
+#luvrMonthYear { width: 100px; }
+#luvrMonthError { color: #b42318; }
+.luvr-duration-status { white-space: pre-line; text-align: left; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; background: #f8fafc; color: #334155; cursor: pointer; max-width: 250px; }
+.luvr-duration-normal { background: #ecfdf3; color: #166534; }
+.luvr-duration-warning_50 { background: #fffbeb; color: #92400e; }
+.luvr-duration-max_reached { background: #fff0df; color: #9a3412; border-color: #ea580c; }
+.luvr-duration-exceeded { background: #fef2f2; color: #991b1b; border-color: #dc2626; }
+.luvr-duration-approved_extension { background: #eff6ff; color: #1e40af; }
+#luvrDurationText { white-space: pre-line; overflow-wrap: anywhere; }
+.luvr-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.luvr-tabs .active { background: #eaf7fa; color: #0788a8; border-color: #0788a8; font-weight: 600; }
+.luvr-sort-button { background: transparent; border: 0; color: inherit; font: inherit; font-weight: 600; padding: 0; cursor: pointer; white-space: nowrap; }
+.luvr-sort-button:focus-visible { outline: 2px solid #0788a8; outline-offset: 3px; }
+.luvr-month-table tfoot td, .luvr-month-table tfoot th { background: #edf3fa; font-weight: 600; border-top: 1px solid #cbd5e1; }
+.luvr-month-table tfoot th { top: auto; }
+.luvr-month-table tfoot .luvr-name, .luvr-month-table tfoot tr > :first-child { background: #edf3fa; }
+.luvr-employee-link { border:0; background:transparent; color:var(--primary-color,#2563eb); padding:0; font:inherit; text-align:left; cursor:pointer; text-decoration:underline; }
+.luvr-specialty-error { color:#9f1239; background:#fff1f2; font-weight:600; }
+#luvrMonthError { white-space:pre-line; }

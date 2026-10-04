@@ -1,7 +1,8 @@
 from pathlib import Path
 
 from app.parsers.word_parser import read_document
-from app.services.po_matcher import match_po
+from app.services.po_matcher import match_po, match_subcontractor, subcontractor_is_absent
+from app.services.report_dates import parsed_date
 
 
 def list_report_files(folder: Path) -> list[Path]:
@@ -31,9 +32,10 @@ def prepare_report(document: dict) -> dict:
     employee_match = data["employee_match"]
     object_match = data["object_match"]
     general_contractor_value = get_field_value(data["general_contractor"], raw=True)
-    subcontractor_value = get_field_value(data["subcontractor"], raw=True)
+    raw_subcontractor = get_field_value(data["subcontractor"], raw=True)
+    subcontractor_value = None if subcontractor_is_absent(raw_subcontractor) else raw_subcontractor
     general_po_match = match_po(general_contractor_value) if general_contractor_value else {"status": "not_checked", "po": None, "candidates": []}
-    subcontractor_po_match = match_po(subcontractor_value) if subcontractor_value else {"status": "not_checked", "po": None, "candidates": []}
+    subcontractor_po_match = match_subcontractor(subcontractor_value)
 
     employee_status = employee_match["status"]
     object_status = object_match["status"]
@@ -75,16 +77,18 @@ def prepare_report(document: dict) -> dict:
     general_po = general_po_match.get("po") if general_contractor_status == "found" else None
     subcontractor_po = subcontractor_po_match.get("po") if subcontractor_status == "found" else None
 
-    return {
+    result = {
         "filename": document["filename"],
         "full_name": inspector["full_name"]["value"] if inspector["found"] else None,
         "employee_id": employee.get("id") if employee else None,
         "position": employee.get("position_name") if employee else None,
-        "report_date": get_field_value(data["report_date"], raw=True),
+        "report_date": (parsed_date(get_field_value(data["report_date"])) or None),
+        "report_date_raw": get_field_value(data["report_date"], raw=True),
         "object_name": get_field_value(data["object"], raw=True),
         "object_id": database_object.get("id") if database_object else None,
         "general_contractor": general_contractor_value,
         "subcontractor": subcontractor_value,
+        "raw_subcontractor": raw_subcontractor,
         "general_contractor_id": general_po.get("id") if general_po else None,
         "subcontractor_id": subcontractor_po.get("id") if subcontractor_po else None,
         "employee_status": employee_status,
@@ -98,6 +102,28 @@ def prepare_report(document: dict) -> dict:
         "general_contractor_candidates": general_po_match.get("candidates", []),
         "subcontractor_candidates": subcontractor_po_match.get("candidates", []),
     }
+
+    for field, match, entity_key in (
+        ("employee", employee_match, "employee"),
+        ("object", object_match, "object"),
+        ("general_contractor", general_po_match, "po"),
+        ("subcontractor", subcontractor_po_match, "po"),
+    ):
+        if match.get("match_source") == "alias":
+            entity = match[entity_key]
+            result[field + "_match_source"] = "alias"
+            result["resolved_" + field] = {**entity, "name": entity.get("full_name") or entity.get("name"), "match_source": "alias"}
+    if result["report_date"] is not None:
+        result["report_date"] = result["report_date"].isoformat()
+    subobject = object_match.get("subobject") if object_status == "found" else None
+    result["subobject_id"] = subobject["id"] if subobject else None
+    result["subobject_name"] = subobject["name"] if subobject else None
+    result["resolved_subobject"] = subobject
+    if subobject:
+        result["resolved_object"] = database_object
+        result["object_match_source"] = object_match["match_source"]
+    return result
+
 
 
 build_report_result = prepare_report
@@ -118,7 +144,9 @@ def process_folder(folder_path: str | Path) -> dict:
     files = list_report_files(folder)
     for file_path in files:
         try:
-            reports.append(prepare_report(read_document(file_path)))
+            report = prepare_report(read_document(file_path))
+            report["source_path"] = str(file_path.resolve())
+            reports.append(report)
         except Exception as error:
             errors.append({
                 "filename": file_path.name,

@@ -1,3 +1,6 @@
+import logging
+from app.repositories.value_aliases import resolve_value_alias
+
 from difflib import SequenceMatcher
 
 from app.database.db import get_connection
@@ -74,6 +77,13 @@ def match_employee(full_name: str):
                 "employee": employee,
                 "candidates": [],
             }
+
+    alias = resolve_value_alias("employee", full_name) if full_name else None
+    if alias:
+        target = next((item for item in employees if item["id"] == alias["target_id"]), None)
+        if target:
+            logging.getLogger(__name__).info("ALIAS_MATCH employee: %r -> %r target_id=%s", full_name, alias["target_name"], target["id"])
+            return {"status": "found", "employee": target, "candidates": [], "match_source": "alias", "alias_id": alias["id"]}
 
     candidates = [
         {

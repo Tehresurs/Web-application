@@ -1,3 +1,7 @@
+import logging
+from app.repositories.value_aliases import resolve_value_alias
+from app.repositories.subobjects import get_subobjects
+
 from difflib import SequenceMatcher
 
 from app.database.db import get_connection
@@ -57,14 +61,46 @@ def match_object(object_name: str):
             return {
                 "status": "found",
                 "object": obj,
+                "object_id": obj["id"], "object_name": obj["name"], "subobject_id": None,
                 "candidates": [],
             }
 
+    alias = resolve_value_alias("object", object_name) if object_name else None
+    if alias:
+        target = next((item for item in objects if item["id"] == alias["target_id"]), None)
+        if target:
+            logging.getLogger(__name__).info("ALIAS_MATCH object: %r -> %r target_id=%s", object_name, alias["target_name"], target["id"])
+            return {"status": "found", "object": target, "object_id": target["id"],
+                    "object_name": target["name"], "subobject_id": None,
+                    "candidates": [], "match_source": "alias", "alias_id": alias["id"]}
+
+    subobjects = get_subobjects()
+    exact = [item for item in subobjects if normalize_object_name(item["name"]) == normalized_word_name]
+    if len(exact) == 1:
+        return subobject_result(exact[0], object_name, "subobject_exact")
+
+    alias = resolve_value_alias("subobject", object_name) if object_name else None
+    if alias:
+        target = next((item for item in subobjects if item["id"] == alias["target_id"]), None)
+        if target:
+            return subobject_result(target, object_name, "subobject_alias")
+
+    # Identical names under different parents require an explicit selection.
     candidates = []
     for obj in objects:
         similarity = calculate_similarity(object_name, obj["name"])
         if similarity >= SIMILARITY_THRESHOLD:
-            candidates.append({"object": obj, "similarity": similarity})
+            candidates.append({"entity_kind": "object", "object": obj, "object_id": obj["id"],
+                               "object_name": obj["name"], "subobject_id": None,
+                               "similarity": similarity, "score": similarity})
+
+    for item in subobjects:
+        score = calculate_similarity(object_name, item["name"])
+        if score >= SIMILARITY_THRESHOLD:
+            candidates.append({"entity_kind": "subobject", "subobject": item,
+                               "subobject_id": item["id"], "subobject_name": item["name"],
+                               "object_id": item["object_id"], "object_name": item["object_name"],
+                               "similarity": score, "score": score})
 
     candidates.sort(key=lambda item: item["similarity"], reverse=True)
 
@@ -83,3 +119,12 @@ def match_object(object_name: str):
             "name": object_name,
         },
     }
+
+
+def subobject_result(item, source, match_source):
+    event = "SUBOBJECT_EXACT_MATCH" if match_source == "subobject_exact" else "SUBOBJECT_ALIAS_MATCH"
+    logging.getLogger(__name__).info("%s: %r -> subobject_id=%s object_id=%s", event, source, item["id"], item["object_id"])
+    return {"status": "found", "match_source": match_source, "candidates": [],
+            "object": {"id": item["object_id"], "name": item["object_name"]},
+            "subobject": item, "object_id": item["object_id"], "object_name": item["object_name"],
+            "subobject_id": item["id"], "subobject_name": item["name"]}

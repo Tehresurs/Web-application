@@ -1,4 +1,22 @@
 from app.database.db import get_connection
+from app.repositories.directory_errors import DirectoryConflict, DirectoryNotFound
+
+_UNSET = object()
+
+
+def _validate_position_settings(work_location, work_schedule):
+    if work_location not in (None, "OBJECT", "OFFICE"):
+        raise ValueError("Место работы: выберите Объект или Офис")
+    if work_schedule not in (None, "SHIFT", "FIVE_TWO"):
+        raise ValueError("График: выберите Вахта или 5/2")
+    if work_location == "OBJECT" and work_schedule != "SHIFT":
+        raise ValueError("Для места работы Объект обязателен график Вахта")
+
+
+def _validate_day_limits(*values):
+    for value in values:
+        if value is not _UNSET and value is not None and (type(value) is not int or not 0 < value <= 2147483647):
+            raise ValueError("Количество дней должно быть положительным целым числом")
 
 
 def get_all_employees():
@@ -38,7 +56,9 @@ def get_employee(employee_id: int):
                     p.action_description,
                     e.phone,
                     e.crew_id,
-                    c.name AS crew
+                    c.name AS crew, e.nrs_number, e.max_shift_days, e.max_off_shift_days,
+                    p.specialty, p.work_location, p.work_schedule, e.dismissal_date,
+                    e.is_archived, e.archived_at
                 FROM employees e
                 LEFT JOIN positions p
                     ON e.position_id = p.id
@@ -64,7 +84,7 @@ def get_positions():
                 SELECT
                     id,
                     name,
-                    action_description
+                    action_description, specialty, work_location, work_schedule
                 FROM positions
                 ORDER BY name;
                 """
@@ -76,6 +96,9 @@ def get_positions():
             "id": row[0],
             "name": row[1],
             "action_description": row[2] or "",
+            "specialty": row[3],
+            "work_location": row[4],
+            "work_schedule": row[5],
         }
         for row in rows
     ]
@@ -84,7 +107,9 @@ def get_positions():
 def create_position(
     name: str,
     action_description: str | None = None,
+    specialty=None, work_location=None, work_schedule=None,
 ):
+    _validate_position_settings(work_location, work_schedule)
     clean_name = " ".join(name.split())
     clean_description = (
         action_description.strip()
@@ -116,15 +141,15 @@ def create_position(
                 """
                 INSERT INTO positions (
                     name,
-                    action_description
+                    action_description, specialty, work_location, work_schedule
                 )
-                VALUES (%s, %s)
+                VALUES (%s, %s, %s, %s, %s)
                 RETURNING
                     id,
                     name,
-                    action_description;
+                    action_description, specialty, work_location, work_schedule;
                 """,
-                (clean_name, clean_description),
+                (clean_name, clean_description, specialty, work_location, work_schedule),
             )
 
             row = cursor.fetchone()
@@ -133,6 +158,7 @@ def create_position(
         "id": row[0],
         "name": row[1],
         "action_description": row[2] or "",
+        "specialty": row[3], "work_location": row[4], "work_schedule": row[5],
     }
 
 
@@ -140,6 +166,7 @@ def rename_position(
     position_id: int,
     name: str,
     action_description: str | None = None,
+    specialty=_UNSET, work_location=_UNSET, work_schedule=_UNSET,
 ):
     clean_name = " ".join(name.split())
     clean_description = (
@@ -156,15 +183,21 @@ def rename_position(
 
             cursor.execute(
                 """
-                SELECT id
+                SELECT specialty, work_location, work_schedule
                 FROM positions
-                WHERE id = %s;
+                WHERE id = %s FOR UPDATE;
                 """,
                 (position_id,),
             )
 
-            if cursor.fetchone() is None:
+            previous = cursor.fetchone()
+            if previous is None:
                 raise ValueError("Должность не найдена")
+
+            specialty = previous[0] if specialty is _UNSET else specialty
+            work_location = previous[1] if work_location is _UNSET else work_location
+            work_schedule = previous[2] if work_schedule is _UNSET else work_schedule
+            _validate_position_settings(work_location, work_schedule)
 
             cursor.execute(
                 """
@@ -187,14 +220,15 @@ def rename_position(
                 SET
                     name = %s,
                     action_description = %s,
+                    specialty = %s, work_location = %s, work_schedule = %s,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s
                 RETURNING
                     id,
                     name,
-                    action_description;
+                    action_description, specialty, work_location, work_schedule;
                 """,
-                (clean_name, clean_description, position_id),
+                (clean_name, clean_description, specialty, work_location, work_schedule, position_id),
             )
 
             row = cursor.fetchone()
@@ -203,6 +237,7 @@ def rename_position(
         "id": row[0],
         "name": row[1],
         "action_description": row[2] or "",
+        "specialty": row[3], "work_location": row[4], "work_schedule": row[5],
     }
 
 
@@ -239,7 +274,7 @@ def delete_position(position_id: int):
     }
 
 
-def get_employees():
+def get_employees(archived=False):
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
@@ -253,7 +288,10 @@ def get_employees():
                     e.phone,
                     e.crew_id,
                     c.name AS crew_name,
-                    COUNT(DISTINCT ea.object_id) AS objects_count
+                    COUNT(DISTINCT ea.object_id) AS objects_count,
+                    e.nrs_number, e.max_shift_days, e.max_off_shift_days,
+                    p.specialty, p.work_location, p.work_schedule, e.dismissal_date,
+                    e.is_archived, e.archived_at
                 FROM employees e
                 LEFT JOIN positions p
                     ON p.id = e.position_id
@@ -261,6 +299,7 @@ def get_employees():
                     ON c.id = e.crew_id
                 LEFT JOIN employee_assignments ea
                     ON ea.employee_id = e.id
+                WHERE (%s::boolean IS NULL OR e.is_archived=%s)
                 GROUP BY
                     e.id,
                     e.full_name,
@@ -269,9 +308,9 @@ def get_employees():
                     p.action_description,
                     e.phone,
                     e.crew_id,
-                    c.name
+                    c.name, p.specialty, p.work_location, p.work_schedule
                 ORDER BY e.full_name;
-                """
+                """, (archived, archived)
             )
             rows = cursor.fetchall()
 
@@ -286,6 +325,11 @@ def get_employees():
             "crew_id": row[6],
             "crew_name": row[7],
             "objects_count": row[8],
+            "nrs_number": row[9], "max_shift_days": row[10], "max_off_shift_days": row[11],
+            "specialty": row[12], "work_location": row[13], "work_schedule": row[14],
+            "dismissal_date": row[15],
+            "is_archived": row[16],
+            "archived_at": row[17],
         }
         for row in rows
     ]
@@ -296,7 +340,9 @@ def create_employee(
     position_id: int | None = None,
     phone: str | None = None,
     crew_id: int | None = None,
+    nrs_number=None, max_shift_days=None, max_off_shift_days=None, dismissal_date=None,
 ):
+    _validate_day_limits(max_shift_days, max_off_shift_days)
     clean_name = " ".join(full_name.split())
 
     if not clean_name:
@@ -323,16 +369,16 @@ def create_employee(
                     full_name,
                     position_id,
                     phone,
-                    crew_id
+                    crew_id, nrs_number, max_shift_days, max_off_shift_days, dismissal_date
                 )
-                VALUES (%s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id;
                 """,
                 (
                     clean_name,
                     position_id,
                     phone.strip() if phone else None,
-                    crew_id,
+                    crew_id, nrs_number, max_shift_days, max_off_shift_days, dismissal_date,
                 ),
             )
 
@@ -347,7 +393,9 @@ def update_employee(
     position_id: int | None = None,
     phone: str | None = None,
     crew_id: int | None = None,
+    nrs_number=_UNSET, max_shift_days=_UNSET, max_off_shift_days=_UNSET, dismissal_date=_UNSET,
 ):
+    _validate_day_limits(max_shift_days, max_off_shift_days)
     clean_name = " ".join(full_name.split())
 
     if not clean_name:
@@ -389,6 +437,10 @@ def update_employee(
                     position_id = %s,
                     phone = %s,
                     crew_id = %s,
+                    dismissal_date = CASE WHEN %s THEN %s ELSE dismissal_date END,
+                    nrs_number = CASE WHEN %s THEN %s ELSE nrs_number END,
+                    max_shift_days = CASE WHEN %s THEN %s ELSE max_shift_days END,
+                    max_off_shift_days = CASE WHEN %s THEN %s ELSE max_off_shift_days END,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s;
                 """,
@@ -397,6 +449,10 @@ def update_employee(
                     position_id,
                     phone.strip() if phone else None,
                     crew_id,
+                    dismissal_date is not _UNSET, None if dismissal_date is _UNSET else dismissal_date,
+                    nrs_number is not _UNSET, None if nrs_number is _UNSET else nrs_number,
+                    max_shift_days is not _UNSET, None if max_shift_days is _UNSET else max_shift_days,
+                    max_off_shift_days is not _UNSET, None if max_off_shift_days is _UNSET else max_off_shift_days,
                     employee_id,
                 ),
             )
@@ -405,28 +461,23 @@ def update_employee(
 
 
 def delete_employee(employee_id: int):
-    with get_connection() as conn:
-        with conn.cursor() as cursor:
+    """Compatibility guard: employees can only be archived, never deleted here."""
+    raise DirectoryConflict("Физическое удаление сотрудников отключено. Используйте действие «В архив». История сотрудника будет сохранена.")
 
-            cursor.execute(
-                """
-                DELETE FROM employees
-                WHERE id = %s
-                RETURNING id, full_name;
-                """,
-                (employee_id,),
-            )
 
-            row = cursor.fetchone()
-
-            if row is None:
-                raise ValueError("Сотрудник не найден")
-
-    return {
-        "id": row[0],
-        "full_name": row[1],
-        "deleted": True,
-    }
+def set_employee_archived(employee_id: int, archived: bool):
+    with get_connection() as conn, conn.cursor() as cursor:
+        cursor.execute("""UPDATE employees SET
+            is_archived=%s,
+            archived_at=CASE WHEN %s THEN COALESCE(archived_at,LOCALTIMESTAMP) ELSE NULL END,
+            updated_at=CASE WHEN is_archived IS DISTINCT FROM %s THEN CURRENT_TIMESTAMP ELSE updated_at END
+            WHERE id=%s
+            RETURNING id,full_name,is_archived,archived_at,dismissal_date""",
+            (archived, archived, archived, employee_id))
+        row=cursor.fetchone()
+        if row is None:
+            raise DirectoryNotFound("Сотрудник не найден")
+        return dict(zip(("id","full_name","is_archived","archived_at","dismissal_date"),row))
 
 
 def get_crews():

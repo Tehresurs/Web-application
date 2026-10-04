@@ -177,6 +177,12 @@ def delete_object(object_id: int):
                     f'и не может быть удалён.'
                 )
 
+            cursor.execute("SELECT 1 FROM construction_subobjects WHERE object_id=%s LIMIT 1", (object_id,))
+            if cursor.fetchone():
+                raise ValueError("У объекта есть подобъекты. Сначала перенесите их к другому объекту.")
+            cursor.execute("SELECT 1 FROM daily_control_results WHERE object_id=%s LIMIT 1", (object_id,))
+            if cursor.fetchone():
+                raise ValueError("Объект используется в Журнале контроля и не может быть удалён.")
             cursor.execute(
                 "DELETE FROM construction_objects WHERE id = %s;",
                 (object_id,),
@@ -604,6 +610,10 @@ def delete_po_type(po_id: int):
                     f"{assignment_count} назначениях сотрудников "
                     f"и не может быть удалено."
                 )
+
+            cursor.execute("SELECT 1 FROM daily_control_results WHERE po_id = %s OR subcontractor_id = %s LIMIT 1", (po_id, po_id))
+            if cursor.fetchone():
+                raise ValueError("Организация используется в Журнале контроля и не может быть удалена")
 
             cursor.execute(
                 """

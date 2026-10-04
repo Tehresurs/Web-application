@@ -17,10 +17,65 @@ const dateFilter=document.getElementById('dateFilter');
 const clearResultsButton=document.getElementById('clearResultsButton');
 const refreshButton=document.getElementById('refreshButton');
 const downloadHtmlButton=document.getElementById('downloadHtmlButton');
+const exportExcelButton=document.getElementById('exportExcelButton');
 window.processingReports = [];
 let checkedPath = null;
 let closeDetailsTimer;
 let activeReportIndex = null;
+const processingLogs = [];
+const reportSaver = new BatchReportSaveController({
+    getReports: () => window.processingReports,
+    button: document.getElementById("saveResultButton"),
+    retryButton: document.getElementById("checkSaveResultButton"),
+    message: document.getElementById("saveResultMessage"),
+    fetchRequest: (...args) => fetch(...args),
+    ready: report => {
+        if (getFinalReportStatus(report) !== "verified" || !report.report_date ||
+            !report.employee_id || !report.object_id || !report.assignments_verified ||
+            (report.subcontractor && !report.subcontractor_id) ||
+            (report.problems || []).length) return false;
+        const poIds = [report.general_contractor_id];
+        return poIds.every(poId => {
+            const item = report.assignments?.[poId];
+            return poId && item?.id && item.category_id &&
+                Number(item.employee_id) === Number(report.employee_id) &&
+                Number(item.object_id) === Number(report.object_id) && Number(item.po_id) === Number(poId);
+        });
+    },
+    onState: saving => {
+        document.querySelector('.details-content').inert = saving;
+        document.querySelector('.app').inert = saving;
+    },
+});
+
+function addProcessingLog(level, message) {
+    processingLogs.push({time: new Date().toLocaleString("ru-RU"), level, message});
+    if (processingLogs.length > 1000) processingLogs.shift();
+    renderProcessingLogs();
+}
+
+function renderProcessingLogs() {
+    const table = document.getElementById("logsTable");
+    table.replaceChildren();
+    if (!processingLogs.length) {
+        const cell = document.createElement("td");
+        cell.colSpan = 3;
+        cell.textContent = "Записей пока нет. Запустите проверку отчётов.";
+        const row = document.createElement("tr");
+        row.append(cell);
+        table.append(row);
+        return;
+    }
+    processingLogs.slice().reverse().forEach(entry => {
+        const row = document.createElement("tr");
+        [entry.time, entry.level, entry.message].forEach(value => {
+            const cell = document.createElement("td");
+            cell.textContent = value;
+            row.append(cell);
+        });
+        table.append(row);
+    });
+}
 
 folderPath.addEventListener("input", () => {
     checkedPath = null;
@@ -43,6 +98,7 @@ checkFolderButton.addEventListener("click", async () => {
         await checkFolder();
     } catch (error) {
         folderInfo.textContent = error.message || "Ошибка выбора папки";
+        addProcessingLog("Ошибка", folderInfo.textContent);
         folderInfo.className = "folder-info error";
     } finally {
         checkFolderButton.disabled = false;
@@ -102,6 +158,7 @@ function updateStatistics(result) {
 }
 
 function getFinalReportStatus(report) {
+    if (Object.keys(report.alias_conflicts || {}).length) return "needs_approval";
     if (report.status === "error") return "error";
 
     const statuses = [
@@ -141,6 +198,7 @@ function buildStatus(report) {
 }
 
 function renderReports() {
+    updateExportButtons();
     resultTable.replaceChildren();
     const query = searchInput.value.trim().toLocaleLowerCase("ru");
     window.processingReports.forEach((report, index) => {
@@ -188,7 +246,132 @@ statusFilter.addEventListener("change", renderReports);
 dateFilter.addEventListener("change", renderReports);
 refreshButton.addEventListener("click", renderReports);
 clearResultsButton.addEventListener("click",()=>{window.processingReports=[];document.querySelectorAll(".stat-number").forEach(n=>n.textContent="—");renderReports();downloadHtmlButton.disabled=true;});
-downloadHtmlButton.addEventListener("click",()=>window.open("/output/intermediate_report.html","_blank"));
+function canExportReports() {
+    return window.processingReports.length > 0 && window.processingReports.every(report => {
+        if (getFinalReportStatus(report) !== "verified" || !report.assignments_verified) return false;
+        if (!report.employee_id || !report.object_id || !report.general_contractor_id) return false;
+        const poIds = [report.general_contractor_id];
+        return poIds.every(poId => {
+            const assignment = report.assignments?.[poId];
+            return poId && assignment?.id && assignment.category_id &&
+                Number(assignment.employee_id) === Number(report.employee_id) &&
+                Number(assignment.object_id) === Number(report.object_id) &&
+                Number(assignment.po_id) === Number(poId);
+        });
+    });
+}
+
+async function verifyReportAssignments(reports) {
+    const byEmployee = new Map();
+    for (const report of reports) {
+        if (getFinalReportStatus(report) !== "verified") continue;
+        try {
+            if (!byEmployee.has(report.employee_id)) {
+                const response = await fetch(`/api/employees/${report.employee_id}/assignments`);
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.message || `HTTP ${response.status}`);
+                byEmployee.set(report.employee_id, data.items || []);
+            }
+            const assignments = {};
+            for (const po of await getReportAssignmentPoEntries(report)) {
+                const matches = byEmployee.get(report.employee_id).filter(item => Number(item.object_id) === Number(report.object_id) && Number(item.po_id) === po.id);
+                if (matches.length === 1) assignments[po.id] = matches[0];
+            }
+            report.assignments = assignments;
+            report.assignment_key = `${report.employee_id}:${report.object_id}:${report.general_contractor_id}`;
+            report.assignments_verified = true;
+        } catch (error) {
+            report.assignments_verified = false;
+            addProcessingLog("Ошибка", `${report.filename}: проверка назначений — ${error.message}`);
+        }
+    }
+    updateExportButtons();
+}
+
+function updateExportButtons() {
+    reportSaver.sync();
+    const ready = canExportReports();
+    [downloadHtmlButton, exportExcelButton].forEach(button => {
+        button.disabled = !ready;
+        button.title = ready ? "Скачать все согласованные отчёты" : "Согласуйте все отчёты и выберите сохранённые назначения с категориями";
+    });
+    document.getElementById("exportHint").textContent = ready
+        ? "Все отчёты согласованы. Скачивание доступно."
+        : !window.processingReports.length ? "Сначала обработайте отчёты."
+        : "Скачивание заблокировано. Проверьте данные и назначения через 👁: " + window.processingReports.filter(report =>
+            getFinalReportStatus(report) !== "verified" || !report.assignments_verified ||
+            !report.assignments?.[report.general_contractor_id]
+        ).map(report => report.filename).join("; ");
+}
+
+function getExportTable() {
+    const headers = ["Файл", "Инженер", "Должность", "Дата отчёта", "Объект", "Генподрядчик", "Субподрядчик", "ПО назначения", "Категория", "ID назначения"];
+    const rows = window.processingReports.flatMap(report =>
+        [report.general_contractor_id].map(poId => {
+            const assignment = report.assignments[poId];
+            return [report.filename, report.resolved_employee?.name || report.full_name,
+                report.position, report.report_date, report.resolved_object?.name || report.object_name,
+                report.resolved_general_contractor?.name || report.general_contractor,
+                report.resolved_subcontractor?.name || report.subcontractor,
+                assignment.po_name || (Number(poId) === Number(report.general_contractor_id)
+                    ? report.resolved_general_contractor?.name || report.general_contractor
+                    : report.resolved_subcontractor?.name || report.subcontractor),
+                assignment.category_name, assignment.id];
+        })
+    );
+    return {headers, rows};
+}
+
+function escapeExportText(value) {
+    return String(value ?? "").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "")
+        .replace(/[&<>"']/g, char => ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&apos;"}[char]));
+}
+
+async function downloadReport(format) {
+    updateExportButtons();
+    if (!canExportReports()) return;
+    const {headers, rows} = getExportTable();
+    let content;
+    if (format === "html") {
+        const row = (values, tag) => `<tr>${values.map(value => `<${tag}>${escapeExportText(value)}</${tag}>`).join("")}</tr>`;
+        content = `<!doctype html><html lang="ru"><meta charset="utf-8"><title>Согласованные отчёты</title><style>body{font-family:Arial}table{border-collapse:collapse}td,th{border:1px solid #aaa;padding:8px;text-align:left}</style><h1>Согласованные отчёты</h1><table><thead>${row(headers,"th")}</thead><tbody>${rows.map(values => row(values,"td")).join("")}</tbody></table></html>`;
+    } else {
+        // Excel XML: explicit String cells preserve dates, phone numbers and prevent formula execution.
+        content = '<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?>' +
+            '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="Отчёты"><Table>' +
+            [headers, ...rows].map(values => '<Row>' + values.map(value => `<Cell><Data ss:Type="String">${escapeExportText(value)}</Data></Cell>`).join("") + '</Row>').join("") +
+            '</Table></Worksheet></Workbook>';
+    }
+    const blob = new Blob([content], {type: format === "html" ? "text/html;charset=utf-8" : "application/xml;charset=utf-8"});
+    const filename = `reports-${new Date().toISOString().slice(0,10)}.${format === "html" ? "html" : "xml"}`;
+    const hint = document.getElementById("exportHint");
+    if (typeof window.showSaveFilePicker === "function") {
+        try {
+            const handle = await window.showSaveFilePicker({suggestedName: filename});
+            const writable = await handle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            hint.textContent = `Файл сохранён: ${handle.name}`;
+            addProcessingLog("Информация", hint.textContent);
+        } catch (error) {
+            hint.textContent = error.name === "AbortError" ? "Сохранение отменено. Можно повторить скачивание."
+                : `Не удалось сохранить файл: ${error.message}`;
+            if (error.name !== "AbortError") addProcessingLog("Ошибка", hint.textContent);
+        }
+        return;
+    }
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.append(link);
+    link.click();
+    hint.textContent = `Скачивание ${filename} передано браузеру. Проверьте список загрузок (Ctrl+J).`;
+    setTimeout(() => { link.remove(); URL.revokeObjectURL(url); }, 60000);
+}
+
+downloadHtmlButton.addEventListener("click", () => downloadReport("html"));
+exportExcelButton.addEventListener("click", () => downloadReport("excel"));
 document.getElementById("headerDate").textContent=new Intl.DateTimeFormat("ru-RU",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}).format(new Date());
 
 parseButton.addEventListener("click", async () => {
@@ -205,6 +388,7 @@ parseButton.addEventListener("click", async () => {
     document.querySelectorAll(".stat-number").forEach(node => { node.textContent = "—"; });
     folderInfo.className = "folder-info";
     folderInfo.textContent = "Обрабатываем отчёты...";
+    addProcessingLog("Информация", `Начата проверка папки: ${path}`);
     try {
         const response = await fetch("/api/process-folder", {
             method: "POST",
@@ -213,7 +397,7 @@ parseButton.addEventListener("click", async () => {
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.message || "Ошибка обработки отчётов");
-        window.processingReports = [
+        window.processingReports = attachReportSourcePaths([
             ...result.reports,
             ...(result.processing_errors || []).map(error => ({
                 filename: error.filename,
@@ -222,17 +406,27 @@ parseButton.addEventListener("click", async () => {
                 object_status: "not_checked",
                 problems: [error.error || "Не удалось обработать файл"],
             })),
-        ];
+        ], path);
         updateStatistics(result);
         dateFilter.innerHTML='<option value="all">Все даты</option>';
         [...new Set(window.processingReports.map(r=>r.report_date).filter(Boolean))].sort().reverse().forEach(d=>{const o=document.createElement("option");o.value=d;o.textContent=d;dateFilter.append(o)});
-        downloadHtmlButton.disabled=false;
         document.getElementById("lastCheck").textContent="Последняя проверка: "+new Intl.DateTimeFormat("ru-RU",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}).format(new Date());
         renderReports();
         folderInfo.textContent = `Проверка завершена. Отчётов: ${result.total}`;
+        await verifyReportAssignments(window.processingReports);
+        window.processingReports.forEach(report => {
+            if (["subobject_exact", "subobject_alias"].includes(report.object_match_source)) {
+                const event = report.object_match_source === "subobject_exact" ? "SUBOBJECT_EXACT_MATCH" : "SUBOBJECT_ALIAS_MATCH";
+                addProcessingLog("Информация", `${event}: «${report.object_name}» → subobject_id=${report.subobject_id} → object_id=${report.object_id}`);
+            }
+            addProcessingLog(report.status === "error" ? "Ошибка" : report.status === "warning" ? "Внимание" : "Информация",
+                `${report.filename}: ${(report.problems || []).join("; ") || "Проверка завершена"}`);
+        });
+        addProcessingLog("Информация", folderInfo.textContent);
         folderInfo.className = "folder-info success";
     } catch (error) {
         folderInfo.textContent = error.message || "Ошибка соединения с сервером";
+        addProcessingLog("Ошибка", folderInfo.textContent);
         folderInfo.className = "folder-info error";
     } finally {
         folderPath.disabled = false;
@@ -255,7 +449,7 @@ function setDetailsValue(id, value) {
 }
 
 function getCandidateEntity(candidate) {
-    return candidate?.employee || candidate?.object || candidate?.po || candidate || {};
+    return candidate?.subobject || candidate?.employee || candidate?.object || candidate?.po || candidate || {};
 }
 
 function getCandidateName(candidate) {
@@ -283,6 +477,18 @@ function confirmCandidate(report, config, candidate) {
     if (config.idField) report[config.idField] = id;
     report[config.statusField] = "found";
     report[config.resolvedField] = {id, name};
+    if (config.kind === "subcontractor") addProcessingLog("Информация", `SUBCONTRACTOR_SELECTED: «${report[config.parsedField]}» → target_id=${id}`);
+    if (config.kind === "object") {
+        const child = candidate.entity_kind === "subobject";
+        report.subobject_id = child ? candidate.subobject_id : null;
+        report.subobject_name = child ? candidate.subobject_name : null;
+        report.resolved_subobject = child ? {id: candidate.subobject_id, name: candidate.subobject_name} : null;
+        report.object_id = child ? candidate.object_id : id;
+        report.resolved_object = child ? {id: candidate.object_id, name: candidate.object_name} : {id, name};
+        report.object_match_source = child ? "subobject_selected" : "selected";
+        report.assignments_verified = false;
+        if (child) addProcessingLog("Информация", `SUBOBJECT_SELECTED: «${report.object_name}» → subobject_id=${report.subobject_id} → object_id=${report.object_id}`);
+    }
 
     if (Array.isArray(report.problems)) {
         report.problems = report.problems.filter(problem => {
@@ -297,6 +503,47 @@ function confirmCandidate(report, config, candidate) {
 }
 
 
+async function confirmAndRemember(report, config, candidate, remember) {
+    const sourceValue = report[config.parsedField];
+    const targetId = getCandidateId(candidate);
+    const aliasKey = config.statusField.replace(/_status$/, "");
+    const endpoint = "/api/value-aliases";
+    const payload = {
+        entity_type: config.kind === "object" && candidate.entity_kind === "subobject" ? "subobject" : config.kind,
+        source_value: sourceValue,
+        target_id: targetId,
+    };
+    report.alias_conflicts ||= {};
+    report.alias_pending ||= {};
+    report.alias_messages ||= {};
+    delete report.alias_messages[aliasKey];
+    if (remember) report.alias_pending[aliasKey] = true;
+    if (remember) report.alias_conflicts[aliasKey] = "Соответствие сохраняется…";
+    confirmCandidate(report, config, candidate);
+    if (!remember) return;
+    try {
+        await apiPost(endpoint, payload);
+        delete report.alias_conflicts[aliasKey];
+        report.alias_messages[aliasKey] = "Выбор применён. Соответствие сохранено.";
+        recalculateReportStatus(report);
+        renderReports();
+    } catch (error) {
+        console.error("ALIAS_SAVE_FAILED", {
+            status: error.status ?? null, endpoint, response_body: error.responseBody ?? error.message,
+            entity_type: payload.entity_type, target_id: targetId,
+        });
+        report.alias_conflicts[aliasKey] = error.status === 409
+            ? "Для этого значения уже сохранено другое соответствие."
+            : "Выбор применён к текущему отчёту, но сохранить соответствие не удалось.";
+        recalculateReportStatus(report);
+        renderReports();
+    } finally {
+        delete report.alias_pending[aliasKey];
+        if (typeof activeReportIndex !== "undefined" && window.processingReports?.[activeReportIndex] === report) openDetails(report);
+    }
+}
+
+
 async function apiPost(url, payload) {
     const response = await fetch(url, {
         method: "POST",
@@ -304,13 +551,16 @@ async function apiPost(url, payload) {
         body: JSON.stringify(payload),
     });
 
+    const responseBody = await response.text();
     let data = {};
-    try {
-        data = await response.json();
-    } catch (_) {}
+    try { data = JSON.parse(responseBody); } catch (_) {}
 
     if (!response.ok) {
-        throw new Error(data.message || data.detail || `HTTP ${response.status}`);
+        const error = new Error(data.message || data.detail || `HTTP ${response.status}`);
+        error.status = response.status;
+        error.endpoint = url;
+        error.responseBody = responseBody;
+        throw error;
     }
     return data;
 }
@@ -357,7 +607,7 @@ async function addNewDatabaseItem(report, config, button, message) {
             result = await apiPost("/api/objects", {name: sourceValue});
             id = result.object?.id ?? result.id ?? null;
             name = result.object?.name || sourceValue;
-        } else if (config.kind === "po") {
+        } else if (config.kind === "po" || config.kind === "subcontractor") {
             result = await apiPost("/api/po-types", {name: sourceValue});
             id = result.item?.id ?? result.id ?? null;
             name = result.item?.name || sourceValue;
@@ -368,6 +618,13 @@ async function addNewDatabaseItem(report, config, button, message) {
         if (config.idField) report[config.idField] = id;
         report[config.statusField] = "found";
         report[config.resolvedField] = {id, name, added: true};
+        if (config.kind === "subcontractor") addProcessingLog("Информация", `SUBCONTRACTOR_CREATED: «${name}» → target_id=${id}`);
+        if (config.kind === "object") {
+            report.subobject_id = null;
+            report.subobject_name = null;
+            report.resolved_subobject = null;
+            report.object_match_source = "created";
+        }
 
         if (Array.isArray(report.problems)) {
             report.problems = report.problems.filter(problem => {
@@ -385,6 +642,88 @@ async function addNewDatabaseItem(report, config, button, message) {
         message.textContent = `Ошибка: ${error.message}`;
     }
 }
+
+function buildSubobjectEditor(report, config) {
+    const container = document.createElement("div");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "secondary-button";
+    button.textContent = "Добавить как подобъект";
+    container.append(button);
+    button.addEventListener("click", async () => {
+        button.disabled = true;
+        const form = document.createElement("form");
+        form.style.display = "grid";
+        form.style.gap = "8px";
+        form.style.marginTop = "10px";
+        const title = document.createElement("strong");
+        title.textContent = "НОВЫЙ ПОДОБЪЕКТ";
+        const nameLabel = document.createElement("label");
+        nameLabel.textContent = "Название: ";
+        const name = document.createElement("input");
+        name.required = true;
+        name.value = report.object_name || "";
+        nameLabel.append(name);
+        const search = document.createElement("input");
+        search.placeholder = "Поиск родительского объекта";
+        search.setAttribute("aria-label", "Поиск родительского объекта");
+        const parentLabel = document.createElement("label");
+        parentLabel.textContent = "Родительский объект: ";
+        const parent = document.createElement("select");
+        parent.required = true;
+        parentLabel.append(parent);
+        const save = document.createElement("button");
+        save.type = "submit";
+        save.className = "secondary-button";
+        save.textContent = "Сохранить подобъект";
+        save.disabled = true;
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.className = "secondary-button";
+        cancel.textContent = "Отмена";
+        const message = document.createElement("small");
+        form.append(title, nameLabel, search, parentLabel, save, cancel, message);
+        container.append(form);
+        cancel.addEventListener("click", () => { form.remove(); button.disabled = false; });
+        let objects = [];
+        const populate = () => {
+            const selected = parent.value;
+            parent.replaceChildren(new Option("Выберите родительский объект", ""));
+            const query = search.value.toLocaleLowerCase("ru");
+            for (const item of objects.filter(item => item.name.toLocaleLowerCase("ru").includes(query))) {
+                parent.add(new Option(item.name, String(item.id)));
+            }
+            parent.value = [...parent.options].some(option => option.value === selected) ? selected : "";
+        };
+        search.addEventListener("input", populate);
+        try {
+            const response = await fetch("/api/objects");
+            if (!response.ok) throw new Error("Не удалось загрузить объекты");
+            objects = (await response.json()).items || [];
+            populate();
+            save.disabled = false;
+        } catch (error) { message.textContent = error.message; }
+        form.addEventListener("submit", async event => {
+            event.preventDefault();
+            if (save.disabled || !parent.value || !name.value.trim()) return;
+            save.disabled = true;
+            cancel.disabled = true;
+            try {
+                const result = await apiPost("/api/subobjects", {object_id: Number(parent.value), name: name.value});
+                const item = result.item;
+                addProcessingLog("Информация", `SUBOBJECT_CREATED: «${item.name}» → subobject_id=${item.id} → object_id=${item.object_id}`);
+                confirmCandidate(report, config, {entity_kind: "subobject", subobject: item,
+                    subobject_id: item.id, subobject_name: item.name, object_id: item.object_id, object_name: item.object_name});
+            } catch (error) {
+                message.textContent = `Не удалось сохранить подобъект: ${error.message}`;
+                save.disabled = false;
+                cancel.disabled = false;
+            }
+        });
+    });
+    return container;
+}
+
 
 function buildCheckRow(report, config) {
     const status = report[config.statusField] || "not_checked";
@@ -408,26 +747,65 @@ function buildCheckRow(report, config) {
 
     const badge = document.createElement("span");
     const labels = {
-        found: resolved?.added ? "ДОБАВЛЕНО" : resolved ? "СОГЛАСОВАНО" : "НАЙДЕНО",
+        found: resolved?.match_source === "alias" ? "ИЗВЕСТНОЕ СООТВЕТСТВИЕ" : resolved?.added ? "ДОБАВЛЕНО" : resolved ? "СОГЛАСОВАНО" : "НАЙДЕНО",
         similar: "ПОХОЖЕЕ",
         new: "НОВОЕ",
         not_checked: "НЕ УКАЗАНО",
+        not_applicable: "ОТСУТСТВУЕТ",
     };
     badge.textContent = labels[status] || "НЕ ПРОВЕРЕНО";
-    badge.className = `status-badge ${status === "found" ? "ok" : status === "not_checked" ? "" : status === "similar" || status === "new" ? "warning" : "error"}`;
+    if (config.kind === "object" && status === "found" && report.subobject_id) {
+        badge.textContent = report.object_match_source === "subobject_alias" ? "ИЗВЕСТНОЕ СООТВЕТСТВИЕ ПОДОБЪЕКТА"
+            : report.object_match_source === "subobject_exact" ? "ПОДОБЪЕКТ НАЙДЕН" : "ПОДОБЪЕКТ СОГЛАСОВАН";
+    }
+    badge.className = `status-badge ${status === "found" ? "ok" : ["not_checked", "not_applicable"].includes(status) ? "" : status === "similar" || status === "new" ? "warning" : "error"}`;
     header.append(badge);
     row.append(header);
 
     const value = document.createElement("div");
     value.style.marginTop = "6px";
-    value.textContent = parsedValue || "—";
+    value.textContent = resolved?.match_source === "alias" ? `Из отчёта: ${parsedValue || "—"}` : parsedValue || "—";
     row.append(value);
+    const aliasKey = config.statusField.replace(/_status$/, "");
+    if (report.alias_messages?.[aliasKey]) {
+        const message = document.createElement("small");
+        message.setAttribute("role", "status");
+        message.textContent = report.alias_messages[aliasKey];
+        row.append(message);
+    }
+    if (report.alias_conflicts?.[aliasKey]) {
+        const warning = document.createElement("small");
+        warning.textContent = report.alias_conflicts[aliasKey];
+        const dismiss = document.createElement("button");
+        dismiss.type = "button";
+        dismiss.className = "secondary-button";
+        dismiss.textContent = "Не запоминать соответствие, подтвердить выбор для отчёта";
+        dismiss.disabled = Boolean(report.alias_pending?.[aliasKey]);
+        dismiss.addEventListener("click", () => {
+            delete report.alias_conflicts[aliasKey];
+            recalculateReportStatus(report);
+            renderReports();
+            openDetails(report);
+        });
+        row.append(warning, dismiss);
+    }
+    if (config.kind === "object" && report.subobject_id) {
+        value.textContent = `Из отчёта: ${parsedValue || "—"}`;
+        const parent = document.createElement("div");
+        parent.textContent = `Родительский объект (справочно): ${report.resolved_object?.name || "—"}`;
+        const child = document.createElement("div");
+        child.textContent = `Объект / Подобъект: ${report.resolved_subobject?.name || report.subobject_name || "—"}`;
+        row.append(child, parent);
+    }
+    if (config.kind === "object" && ["similar", "new"].includes(status)) {
+        row.append(buildSubobjectEditor(report, config));
+    }
 
     if (resolved) {
         const note = document.createElement("small");
         note.style.display = "block";
         note.style.marginTop = "6px";
-        note.textContent = resolved.added ? `Добавлено в базу: ${resolved.name}` : `Выбрано из базы: ${resolved.name}`;
+        note.textContent = resolved.match_source === "alias" ? `Определено: ${resolved.name}` : resolved.added ? `Добавлено в базу: ${resolved.name}` : `Выбрано из базы: ${resolved.name}`;
         row.append(note);
     } else if (status === "found") {
         const note = document.createElement("small");
@@ -463,6 +841,11 @@ function buildCheckRow(report, config) {
                 ? ` — ${Math.round(candidate.similarity * 100)}%`
                 : "";
             caption.textContent = getCandidateName(candidate) + score;
+            if (config.kind === "object") {
+                caption.textContent = candidate.entity_kind === "subobject"
+                    ? `ПОДОБЪЕКТ: ${candidate.subobject_name}${score} · Родитель: ${candidate.object_name}`
+                    : `ОБЪЕКТ: ${getCandidateName(candidate)}${score}`;
+            }
 
             option.append(radio, caption);
             choices.append(option);
@@ -494,11 +877,19 @@ function buildCheckRow(report, config) {
             confirmButton.disabled = !choices.querySelector('input[type="radio"]:checked');
         });
 
+        const rememberLabel = document.createElement("label");
+        const rememberCheckbox = document.createElement("input");
+        rememberCheckbox.type = "checkbox";
+        rememberLabel.append(rememberCheckbox, document.createTextNode(" Запомнить соответствие"));
+
         confirmButton.addEventListener("click", () => {
             const selected = choices.querySelector('input[type="radio"]:checked');
             if (!selected) return;
             const candidate = candidates[Number(selected.value)];
-            if (candidate) confirmCandidate(report, config, candidate);
+            if (candidate) {
+                confirmButton.disabled = true;
+                confirmAndRemember(report, config, candidate, rememberCheckbox.checked);
+            }
         });
 
         addAsNewButton.addEventListener("click", () => {
@@ -506,7 +897,7 @@ function buildCheckRow(report, config) {
         });
 
         actions.append(confirmButton, addAsNewButton, message);
-        row.append(choices, actions);
+        row.append(choices, rememberLabel, actions);
     } else if (status === "similar") {
         const note = document.createElement("small");
         note.textContent = "Найдено похожее значение, но варианты для выбора не получены.";
@@ -540,7 +931,7 @@ function buildCheckRow(report, config) {
         });
 
         row.append(addButton, message);
-    } else if (status === "not_checked") {
+    } else if (["not_checked", "not_applicable"].includes(status)) {
         const note = document.createElement("small");
         note.textContent = parsedValue ? "Проверка не выполнена." : "Значение в отчёте не указано — проверка не требуется.";
         row.append(note);
@@ -560,18 +951,6 @@ async function getReportAssignmentPoEntries(report) {
             id: Number(report.general_contractor_id),
             name: report.resolved_general_contractor?.name || report.general_contractor,
         });
-    }
-
-    if (report.subcontractor && report.subcontractor_id) {
-        const id = Number(report.subcontractor_id);
-        if (!entries.some(item => item.id === id)) {
-            entries.push({
-                role: "ПО",
-                source: "Субподрядчик",
-                id,
-                name: report.resolved_subcontractor?.name || report.subcontractor,
-            });
-        }
     }
 
     return entries;
@@ -597,8 +976,10 @@ function flattenAssignmentCategories(items) {
 }
 
 async function renderReportAssignment(report, container) {
+    report.assignments_verified = false;
+    updateExportButtons();
     // Keep the resolved assignment together with the report, keyed by PO.
-    const assignmentKey = `${report.employee_id}:${report.object_id}:${report.general_contractor_id}:${report.subcontractor_id}`;
+    const assignmentKey = `${report.employee_id}:${report.object_id}:${report.general_contractor_id}`;
     if (report.assignment_key !== assignmentKey) {
         report.assignment_key = assignmentKey;
         report.assignments = {};
@@ -610,7 +991,7 @@ async function renderReportAssignment(report, container) {
     section.style.borderTop = "1px solid rgba(148, 163, 184, .35)";
 
     const title = document.createElement("h4");
-    title.textContent = "Назначение";
+    title.textContent = "Категория и назначение";
     section.append(title);
     container.append(section);
 
@@ -629,6 +1010,7 @@ async function renderReportAssignment(report, container) {
     }
 
     const poEntries = await getReportAssignmentPoEntries(report);
+    if (!section.isConnected) return;
     if (!poEntries.length) {
         const note = document.createElement("small");
         note.textContent = "ПО для назначения не определено.";
@@ -643,6 +1025,7 @@ async function renderReportAssignment(report, container) {
     try {
         const response = await fetch(`/api/employees/${report.employee_id}/assignments`);
         const data = await response.json();
+        if (!section.isConnected) return;
         if (!response.ok) {
             throw new Error(data.message || data.detail || `HTTP ${response.status}`);
         }
@@ -715,6 +1098,11 @@ async function renderReportAssignment(report, container) {
                 confirm.className = "secondary-button";
                 confirm.textContent = "Выбрать назначение";
                 const message = document.createElement("div");
+                select.addEventListener("change", () => {
+                    delete report.assignments[po.id];
+                    message.textContent = "";
+                    updateExportButtons();
+                });
                 confirm.addEventListener("click", () => {
                     const selected = matches.find(item => String(item.id) === select.value);
                     if (!selected) {
@@ -722,6 +1110,7 @@ async function renderReportAssignment(report, container) {
                         return;
                     }
                     report.assignments[po.id] = selected;
+                    updateExportButtons();
                     message.textContent = `✓ Выбрана категория: ${selected.category_name}`;
                 });
                 warning.append(select, confirm, message);
@@ -798,6 +1187,7 @@ async function renderReportAssignment(report, container) {
                         if (section.isConnected && detailsPanel.classList.contains("open")) {
                             openDetails(report);
                         }
+                        updateExportButtons();
                         if (typeof loadEmployees === "function" && typeof employeeItems !== "undefined" && employeeItems.length) {
                             loadEmployees().catch(() => {});
                         }
@@ -815,9 +1205,12 @@ async function renderReportAssignment(report, container) {
 
             section.append(block);
         }
+        report.assignments_verified = true;
     } catch (error) {
         loading.textContent = `Не удалось проверить назначение: ${error.message}`;
         section.append(loading);
+    } finally {
+        updateExportButtons();
     }
 }
 
@@ -825,27 +1218,34 @@ async function renderReportAssignment(report, container) {
 function openDetails(report) {
     clearTimeout(closeDetailsTimer);
     setDetailsValue("detailsFile", report.filename);
-    setDetailsValue("detailsEmployee", report.full_name);
+    setDetailsValue("detailsEmployee", report.resolved_employee?.name || report.full_name);
     setDetailsValue("detailsPosition", report.position);
     setDetailsValue("detailsDate", report.report_date);
-    setDetailsValue("detailsObject", report.object_name);
-    setDetailsValue("detailsGeneralContractor", report.general_contractor);
-    setDetailsValue("detailsSubcontractor", report.subcontractor);
+    setDetailsValue("detailsObject", report.resolved_subobject?.name || report.resolved_object?.name || report.object_name);
+    setDetailsValue("detailsGeneralContractor", report.resolved_general_contractor?.name || report.general_contractor);
+    setDetailsValue("detailsSubcontractor", report.resolved_subcontractor?.name || report.subcontractor);
 
     document.getElementById("detailsTitle").textContent = "Результат проверки";
 
     const databaseStatus = document.getElementById("databaseStatus");
     databaseStatus.className = "database-status";
     databaseStatus.replaceChildren();
+    const dateRow = document.createElement("div");
+    dateRow.textContent = `Дата: ${report.report_date || "—"}`;
+    databaseStatus.append(dateRow);
 
     databaseStatus.append(
         buildCheckRow(report, {label:"Инженер",kind:"employee",statusField:"employee_status",parsedField:"full_name",candidatesField:"employee_candidates",resolvedField:"resolved_employee",idField:"employee_id",problemWords:["сотрудник","фио","инженер"]}),
-        buildCheckRow(report, {label:"Объект",kind:"object",statusField:"object_status",parsedField:"object_name",candidatesField:"object_candidates",resolvedField:"resolved_object",idField:"object_id",problemWords:["объект"]}),
-        buildCheckRow(report, {label:"Генподрядчик",kind:"po",statusField:"general_contractor_status",parsedField:"general_contractor",candidatesField:"general_contractor_candidates",resolvedField:"resolved_general_contractor",idField:"general_contractor_id",problemWords:["генподряд"]}),
-        buildCheckRow(report, {label:"Субподрядчик",kind:"po",statusField:"subcontractor_status",parsedField:"subcontractor",candidatesField:"subcontractor_candidates",resolvedField:"resolved_subcontractor",idField:"subcontractor_id",problemWords:["субподряд"]})
+        buildCheckRow(report, {label:"Объект / Подобъект",kind:"object",statusField:"object_status",parsedField:"object_name",candidatesField:"object_candidates",resolvedField:"resolved_object",idField:"object_id",problemWords:["объект"]}),
+        buildCheckRow(report, {label:"ПО",kind:"po",statusField:"general_contractor_status",parsedField:"general_contractor",candidatesField:"general_contractor_candidates",resolvedField:"resolved_general_contractor",idField:"general_contractor_id",problemWords:["генподряд"]}),
+        buildCheckRow(report, {label:"Субподрядчик",kind:"subcontractor",statusField:"subcontractor_status",parsedField:"subcontractor",candidatesField:"subcontractor_candidates",resolvedField:"resolved_subcontractor",idField:"subcontractor_id",problemWords:["субподряд"]})
     );
 
-    renderReportAssignment(report, databaseStatus);
+    renderReportAssignment(report, databaseStatus).catch(() => {
+        report.assignments_verified = false;
+    }).finally(() => {
+        reportSaver.sync();
+    });
 
     // Согласование действует только для текущего результата обработки.
     // Исходные значения парсера из Word не изменяются.
@@ -1009,44 +1409,44 @@ const objectDirectoryModalError = document.getElementById("objectDirectoryModalE
 let objectItems = [];
 let objectEditId = null;
 
+let objectSubobjects = [];
+const expandedObjects = new Set();
+const subobjectDirectoryEditor = createSubobjectDirectoryEditor({
+    getObjects: () => objectItems,
+    onSaved: async (child, oldParent) => {
+        expandedObjects.add(oldParent);
+        expandedObjects.add(child.object_id);
+        await loadObjects();
+    },
+});
+
 async function loadObjects() {
-    const response = await fetch("/api/objects");
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.message || "Не удалось загрузить объекты");
-    objectItems = result.items || result.objects || [];
+    const responses = await Promise.all([fetch("/api/objects"), fetch("/api/subobjects?include_inactive=true")]);
+    const results = await Promise.all(responses.map(response => response.json()));
+    if (responses.some(response => !response.ok)) throw new Error("Не удалось загрузить объекты и подобъекты");
+    objectItems = results[0].items || results[0].objects || [];
+    objectSubobjects = results[1].items || [];
     renderObjectList();
 }
 
 function renderObjectList() {
     if (!objectList) return;
-    objectList.replaceChildren();
-    const query = (objectSearchInput?.value || "").trim().toLocaleLowerCase("ru");
-    const items = objectItems.filter(item =>
-        !query || (item.name || "").toLocaleLowerCase("ru").includes(query)
-    );
-    if (objectCount) objectCount.textContent = `Показано: ${items.length} из ${objectItems.length}`;
-
-    if (!items.length) {
-        objectList.innerHTML = `<div class="category-empty">${objectItems.length ? "Объекты не найдены" : "Объекты пока не добавлены"}</div>`;
-        return;
-    }
-
-    items.forEach((item, index) => {
-        const row = document.createElement("div");
-        row.className = "category-row";
-        row.innerHTML = `
-            <div class="category-number"></div>
-            <div class="category-name"><strong></strong></div>
-            <div class="category-actions">
-                <button type="button" class="category-icon-button edit-object-directory" title="Редактировать">✎</button>
-                <button type="button" class="category-icon-button danger delete-object-directory" title="Удалить">🗑</button>
-            </div>`;
-        row.querySelector(".category-number").textContent = index + 1;
-        row.querySelector("strong").textContent = item.name || "—";
-        row.querySelector(".edit-object-directory").dataset.id = item.id;
-        row.querySelector(".delete-object-directory").dataset.id = item.id;
-        objectList.append(row);
+    const activity = document.getElementById("objectActivityFilter").value;
+    const rows = objectHierarchyRows(objectItems, objectSubobjects, {
+        query: objectSearchInput?.value || "",
+        sort: document.getElementById("objectSort").value,
+        presence: document.getElementById("objectChildrenFilter").value,
+        activity,
     });
+    if (objectCount) objectCount.textContent = `Показано: ${rows.length} из ${objectItems.length}`;
+    renderObjectHierarchy(objectList, rows, {
+        expanded: expandedObjects, activity,
+        onAdd: item => subobjectDirectoryEditor.open(item),
+        onEdit: child => subobjectDirectoryEditor.open(null, child),
+    });
+}
+for (const id of ["objectSort", "objectChildrenFilter", "objectActivityFilter"]) {
+    document.getElementById(id)?.addEventListener("change", renderObjectList);
 }
 
 function openObjectDirectoryModal(item = null) {
@@ -1181,18 +1581,14 @@ function renderCategoryList() {
 
 objectsNavButton?.addEventListener("click", async () => {
     closeDetails();
-    processingPage.hidden = true;
-    objectsPage.hidden = false;
-    setActiveNav(objectsNavButton);
+    showMainSection(objectsPage, objectsNavButton);
     activateObjectTab(objectsTab);
     try { await loadObjects(); }
     catch (error) { objectList.innerHTML = `<div class="category-empty">${error.message}</div>`; }
 });
 
 backToProcessingButton?.addEventListener("click", () => {
-    objectsPage.hidden = true;
-    processingPage.hidden = false;
-    setActiveNav(document.querySelector(".nav-item:first-child"));
+    showMainSection(processingPage, document.getElementById("processingNavButton"));
 });
 
 function openCategoryModal({parentId, nextOrder, item = null}) {
@@ -1436,11 +1832,46 @@ loadPoTypes().catch(() => {});
 // ===== Employees / positions =====
 const employeesNavButton=document.getElementById("employeesNavButton"),employeesPage=document.getElementById("employeesPage"),backFromEmployeesButton=document.getElementById("backFromEmployeesButton"),employeesTab=document.getElementById("employeesTab"),positionsTab=document.getElementById("positionsTab"),employeesPanel=document.getElementById("employeesPanel"),positionsPanel=document.getElementById("positionsPanel"),positionList=document.getElementById("positionList"),addPositionButton=document.getElementById("addPositionButton"),positionModal=document.getElementById("positionModal"),positionModalTitle=document.getElementById("positionModalTitle"),positionModalClose=document.getElementById("positionModalClose"),positionModalCancel=document.getElementById("positionModalCancel"),positionModalSave=document.getElementById("positionModalSave"),positionNameInput=document.getElementById("positionNameInput"),positionDescriptionInput=document.getElementById("positionDescriptionInput"),positionModalError=document.getElementById("positionModalError");
 let positionItems=[],positionEditId=null;
-function showMainSection(section,nav){processingPage.hidden=section!==processingPage;objectsPage.hidden=section!==objectsPage;employeesPage.hidden=section!==employeesPage;setActiveNav(nav)}
+document.getElementById("positionWorkLocation").addEventListener("change",()=>syncPositionSchedule());
+function showMainSection(section, nav) {
+    closeDetails();
+    ["processingPage", "objectsPage", "employeesPage", "crewsPage", "contractorsPage", "logsPage", "journalPage", "railTicketsPage", "luvrCalendarPage", "luvrMonthPage"].forEach(id => {
+        const page = document.getElementById(id);
+        if (page) page.hidden = page !== section;
+    });
+    const luvrTabs={railTicketsPage:'railTicketsNavButton',luvrMonthPage:'luvrMonthNavButton',luvrCalendarPage:'luvrCalendarNavButton'};
+    const luvrTab=luvrTabs[section?.id];
+    const luvrNavigation=document.getElementById('luvrNavigation');
+    if(luvrNavigation){
+        luvrNavigation.hidden=!luvrTab;
+        if(luvrTab)luvrNavigation.dataset.activeTab=luvrTab;
+        for(const id of Object.values(luvrTabs)){
+            const button=document.getElementById(id);button.classList.toggle('active',id===luvrTab);
+            if(id===luvrTab)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');
+        }
+    }
+    setActiveNav(luvrTab?document.getElementById('luvrNavButton'):nav);
+}
+
+document.getElementById('luvrNavButton')?.addEventListener('click',()=>{
+    const tab=document.getElementById('luvrNavigation')?.dataset.activeTab||'luvrMonthNavButton';
+    document.getElementById(tab).click();
+});
+document.getElementById("processingNavButton")?.addEventListener("click", event => {
+    showMainSection(processingPage, event.currentTarget);
+});
+document.getElementById("logsNavButton")?.addEventListener("click", event => {
+    showMainSection(document.getElementById("logsPage"), event.currentTarget);
+    renderProcessingLogs();
+});
+document.getElementById("refreshLogsButton")?.addEventListener("click", renderProcessingLogs);
+document.getElementById("backFromLogsButton")?.addEventListener("click", () => {
+    showMainSection(processingPage, document.getElementById("processingNavButton"));
+});
 function activateEmployeeTab(tab){[employeesTab,positionsTab].forEach(b=>b?.classList.remove("active"));tab?.classList.add("active");employeesPanel.hidden=tab!==employeesTab;positionsPanel.hidden=tab!==positionsTab}
 async function loadPositions(){const r=await fetch("/api/positions"),x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось загрузить должности");positionItems=x.items||[];renderPositionList()}
-function renderPositionList(){positionList.replaceChildren();if(!positionItems.length){positionList.innerHTML='<div class="category-empty">Должности не найдены</div>';return}const header=document.createElement("div");header.className="position-table-header";header.innerHTML="<strong>Должность</strong><strong>Описание действий</strong><strong>Действия</strong>";positionList.append(header);positionItems.forEach(item=>{const row=document.createElement("div");row.className="position-table-row";row.innerHTML='<div class="position-title"></div><div class="position-description"></div><div class="category-actions"><button type="button" class="category-icon-button edit-position" title="Редактировать">✎</button><button type="button" class="category-icon-button danger delete-position" title="Удалить">🗑</button></div>';row.querySelector(".position-title").textContent=item.name;const d=row.querySelector(".position-description");d.textContent=item.action_description||"Описание действий не заполнено";if(!item.action_description)d.classList.add("empty-description");row.querySelector(".edit-position").dataset.id=item.id;row.querySelector(".delete-position").dataset.id=item.id;positionList.append(row)})}
-function openPositionModal(item=null){positionEditId=item?.id||null;positionModalTitle.textContent=item?"Редактировать должность":"Добавить должность";positionModalSave.textContent=item?"Сохранить":"Добавить";positionNameInput.value=item?.name||"";positionDescriptionInput.value=item?.action_description||"";positionModalError.hidden=true;positionModal.hidden=false;setTimeout(()=>positionNameInput.focus(),0)}
+function renderPositionList(){positionList.replaceChildren();if(!positionItems.length){positionList.innerHTML='<div class="category-empty">Должности не найдены</div>';return}const header=document.createElement("div");header.className="position-table-header";header.innerHTML="<strong>Должность</strong><strong>Описание действий</strong><strong>Действия</strong>";positionList.append(header);positionItems.forEach(item=>{const row=document.createElement("div");row.className="position-table-row";row.innerHTML='<div class="position-title"></div><div class="position-description"></div><div class="category-actions"><button type="button" class="category-icon-button edit-position" title="Редактировать">✎</button><button type="button" class="category-icon-button danger delete-position" title="Удалить">🗑</button></div>';row.querySelector(".position-title").textContent=item.name;const labels=positionWorkLabels(item);const settings=document.createElement("small");settings.className="position-work-settings";settings.textContent=`${labels.specialty} ? ${labels.location} ? ${labels.schedule}`;row.querySelector(".position-title").append(settings);const d=row.querySelector(".position-description");d.textContent=item.action_description||"Описание действий не заполнено";if(!item.action_description)d.classList.add("empty-description");row.querySelector(".edit-position").dataset.id=item.id;row.querySelector(".delete-position").dataset.id=item.id;positionList.append(row)})}
+function openPositionModal(item=null){positionEditId=item?.id||null;positionModalTitle.textContent=item?"Редактировать должность":"Добавить должность";positionModalSave.textContent=item?"Сохранить":"Добавить";positionNameInput.value=item?.name||"";positionDescriptionInput.value=item?.action_description||"";fillPositionSettings(item);positionModalError.hidden=true;positionModal.hidden=false;setTimeout(()=>positionNameInput.focus(),0)}
 function closePositionModal(){positionModal.hidden=true}
 employeesNavButton?.addEventListener("click",()=>{closeDetails();showMainSection(employeesPage,employeesNavButton);activateEmployeeTab(employeesTab)});
 backFromEmployeesButton?.addEventListener("click",()=>showMainSection(processingPage,document.querySelector(".nav-item:first-child")));
@@ -1449,7 +1880,7 @@ positionsTab?.addEventListener("click",async()=>{activateEmployeeTab(positionsTa
 addPositionButton?.addEventListener("click",()=>openPositionModal());
 positionModalClose?.addEventListener("click",closePositionModal);positionModalCancel?.addEventListener("click",closePositionModal);positionModal?.addEventListener("click",e=>{if(e.target===positionModal)closePositionModal()});
 positionList?.addEventListener("click",async e=>{const eb=e.target.closest(".edit-position");if(eb){const item=positionItems.find(x=>String(x.id)===eb.dataset.id);if(item)openPositionModal(item);return}const db=e.target.closest(".delete-position");if(!db)return;const item=positionItems.find(x=>String(x.id)===db.dataset.id);if(!item||!confirm(`Удалить должность «${item.name}»?`))return;try{const r=await fetch(`/api/positions/${item.id}`,{method:"DELETE"}),x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось удалить должность");await loadPositions()}catch(err){alert(err.message)}});
-positionModalSave?.addEventListener("click",async()=>{const name=positionNameInput.value.trim();if(!name){positionModalError.textContent="Введите название должности";positionModalError.hidden=false;return}positionModalSave.disabled=true;positionModalError.hidden=true;try{const url=positionEditId?`/api/positions/${positionEditId}`:"/api/positions",r=await fetch(url,{method:positionEditId?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,action_description:positionDescriptionInput.value.trim()||null})}),x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось сохранить должность");closePositionModal();await loadPositions()}catch(err){positionModalError.textContent=err.message;positionModalError.hidden=false}finally{positionModalSave.disabled=false}});
+positionModalSave?.addEventListener("click",async()=>{const name=positionNameInput.value.trim();if(!name){positionModalError.textContent="Введите название должности";positionModalError.hidden=false;return}positionModalSave.disabled=true;positionModalError.hidden=true;try{const url=positionEditId?`/api/positions/${positionEditId}`:"/api/positions",r=await fetch(url,{method:positionEditId?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,action_description:positionDescriptionInput.value.trim()||null,...positionSettingsPayload()})}),x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось сохранить должность");closePositionModal();await loadPositions()}catch(err){positionModalError.textContent=err.message;positionModalError.hidden=false}finally{positionModalSave.disabled=false}});
 
 
 // ===== Employees CRUD =====
@@ -1485,10 +1916,14 @@ let employeeAssignments=[];let assignmentEditId=null;
 let employeeItems=[];
 let crewItems=[];
 let employeeEditId=null;
+const employeeArchiveFilter=document.getElementById("employeeArchiveFilter");
+let employeeListRequest=0;
 
 async function loadEmployees(){
-    const response=await fetch("/api/employees");
+    const version=++employeeListRequest;
+    const response=await fetch(employeeArchiveListUrl(employeeArchiveFilter?.value==="archived"));
     const result=await response.json();
+    if(version!==employeeListRequest)return;
     if(!response.ok) throw new Error(result.message||"Не удалось загрузить сотрудников");
     employeeItems=result.items||[];
     renderEmployees();
@@ -1508,19 +1943,20 @@ function renderEmployees(){
     if(!items.length){employeeList.innerHTML='<div class="category-empty">Сотрудники не найдены</div>';return}
     const header=document.createElement("div");
     header.className="employee-table-header";
-    header.innerHTML="<strong>ФИО</strong><strong>Должность</strong><strong>Телефон</strong><strong>Экипаж</strong><strong>Объектов</strong><strong>Действия</strong>";
+    const archived=employeeArchiveFilter?.value==="archived";
+    header.innerHTML=archived?"<strong>ФИО</strong><strong>Должность</strong><strong>Дата увольнения</strong><strong>Дата архивирования</strong><strong>Объектов</strong><strong>Действия</strong>":"<strong>ФИО</strong><strong>Должность</strong><strong>Телефон</strong><strong>Экипаж</strong><strong>Объектов</strong><strong>Действия</strong>";
     employeeList.append(header);
     items.forEach(item=>{
         const row=document.createElement("div");
         row.className="employee-table-row";
-        row.innerHTML='<div class="employee-name"></div><div class="employee-position"></div><div class="employee-phone"></div><div class="employee-crew"></div><div class="employee-objects-count"></div><div class="category-actions"><button type="button" class="category-icon-button edit-employee" title="Редактировать">✎</button><button type="button" class="category-icon-button danger delete-employee" title="Удалить">🗑</button></div>';
+        row.innerHTML='<div class="employee-name"></div><div class="employee-position"></div><div class="employee-phone"></div><div class="employee-crew"></div><div class="employee-objects-count"></div><div class="category-actions"><button type="button" class="category-icon-button edit-employee" title="Редактировать">✎</button><button type="button" class="employee-archive-button"></button></div>';
         row.querySelector(".employee-name").textContent=item.full_name||"—";
         const p=row.querySelector(".employee-position"); p.textContent=item.position_name||"—"; if(item.action_description)p.title=item.action_description;
-        row.querySelector(".employee-phone").textContent=item.phone||"—";
-        const crew=crewItems.find(x=>x.id===item.crew_id); row.querySelector(".employee-crew").textContent=crew?.driver_full_name||item.crew_name||"—";
+        row.querySelector(".employee-phone").textContent=archived?employeeArchiveDate(item.dismissal_date):item.phone||"—";
+        const crew=crewItems.find(x=>x.id===item.crew_id); row.querySelector(".employee-crew").textContent=archived?employeeArchiveDate(item.archived_at):crew?.driver_full_name||item.crew_name||"—";
         row.querySelector(".employee-objects-count").textContent=Number(item.objects_count)||0;
         row.querySelector(".edit-employee").dataset.id=item.id;
-        row.querySelector(".delete-employee").dataset.id=item.id;
+        const archiveButton=row.querySelector(".employee-archive-button");archiveButton.dataset.id=item.id;archiveButton.textContent=item.is_archived?"Восстановить":"В архив";
         employeeList.append(row);
     });
 }
@@ -1535,6 +1971,7 @@ function fillEmployeeSelects(){
 function updateEmployeeDescription(){
     const item=(typeof positionItems!=="undefined"?positionItems:[]).find(x=>String(x.id)===employeePositionSelect.value);
     employeeActionDescription.value=item?.action_description||"";
+    showEmployeePositionSettings(item);
 }
 function updateEmployeeCrewPreview(){
     const item=crewItems.find(x=>String(x.id)===employeeCrewSelect.value);
@@ -1555,12 +1992,15 @@ async function openEmployeeModal(item=null){
     employeeModalSave.textContent=item?"Сохранить":"Добавить";
     employeeModalError.hidden=true;employeeModalError.textContent="";
     try{
-        if(typeof positionItems==="undefined"||!positionItems.length)await loadPositions();
+        await loadPositions();
         if(!crewItems.length)await loadCrews();
         fillEmployeeSelects();
         employeeNameInput.value=item?.full_name||"";
         employeePositionSelect.value=item?.position_id==null?"":String(item.position_id);
         employeePhoneInput.value=item?.phone||"";
+        fillEmployeePersonalSettings(item);
+        document.getElementById("employeeDismissalDate").value=item?.dismissal_date||"";
+        openEmployeeLuvrHistory(item?.id||null);
         employeeCrewSelect.value=item?.crew_id==null?"":String(item.crew_id);
         updateEmployeeDescription();updateEmployeeCrewPreview();closeAssignmentEditor();
         if(item){employeeAssignmentsSection.hidden=false;await loadEmployeeAssignments(item.id)}else{employeeAssignmentsSection.hidden=true;employeeAssignments=[]}
@@ -1569,6 +2009,7 @@ async function openEmployeeModal(item=null){
 }
 function closeEmployeeModal(){employeeModal.hidden=true}
 employeeSearchInput?.addEventListener("input",renderEmployees);
+employeeArchiveFilter?.addEventListener("change",()=>loadEmployees().catch(error=>alert(error.message)));
 employeePositionSelect?.addEventListener("change",updateEmployeeDescription);
 employeeCrewSelect?.addEventListener("change",updateEmployeeCrewPreview);
 addEmployeeButton?.addEventListener("click",()=>openEmployeeModal());
@@ -1578,11 +2019,13 @@ employeeModal?.addEventListener("click",e=>{if(e.target===employeeModal)closeEmp
 employeeList?.addEventListener("click",async e=>{
     const edit=e.target.closest(".edit-employee");
     if(edit){const item=employeeItems.find(x=>x.id===Number(edit.dataset.id));if(item)await openEmployeeModal(item);return}
-    const del=e.target.closest(".delete-employee");
-    if(del){
-        const item=employeeItems.find(x=>x.id===Number(del.dataset.id));
-        if(!item||!confirm(`Удалить сотрудника «${item.full_name}»?`))return;
-        try{const r=await fetch(`/api/employees/${item.id}`,{method:"DELETE"});const x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось удалить сотрудника");await loadEmployees()}catch(error){alert(error.message)}
+    const archive=e.target.closest(".employee-archive-button");
+    if(archive){
+        const item=employeeItems.find(x=>x.id===Number(archive.dataset.id));
+        if(!item||archive.disabled)return;
+        archive.disabled=true;
+        try{const changed=await changeEmployeeArchive(item,async(url,options)=>{const r=await fetch(url,options),x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось изменить архивное состояние");return x;},message=>confirm(message));if(changed)await loadEmployees()}catch(error){alert(error.message)}
+        finally{archive.disabled=false}
     }
 });
 addAssignmentButton?.addEventListener("click",()=>openAssignmentEditor());
@@ -1597,6 +2040,8 @@ employeeModalSave?.addEventListener("click",async()=>{
     try{
         const body={
             full_name,
+            ...employeePersonalSettingsPayload(),
+            dismissal_date:document.getElementById("employeeDismissalDate").value||null,
             position_id:employeePositionSelect.value?Number(employeePositionSelect.value):null,
             phone:employeePhoneInput.value.trim()||null,
             crew_id:employeeCrewSelect.value?Number(employeeCrewSelect.value):null
@@ -1605,7 +2050,7 @@ employeeModalSave?.addEventListener("click",async()=>{
             method:employeeEditId?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)
         });
         const x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось сохранить сотрудника");
-        closeEmployeeModal();await loadEmployees();
+        closeEmployeeModal();document.dispatchEvent(new CustomEvent("employee-saved",{detail:{id:x.id}}));await loadEmployees();
     }catch(error){employeeModalError.textContent=error.message;employeeModalError.hidden=false}
     finally{employeeModalSave.disabled=false}
 });
@@ -1684,18 +2129,12 @@ function closeCrewModal(){crewModal.hidden=true}
 
 crewsNavButton?.addEventListener("click",async()=>{
     closeDetails();
-    processingPage.hidden=true;
-    if(objectsPage)objectsPage.hidden=true;
-    if(employeesPage)employeesPage.hidden=true;
-    crewsPage.hidden=false;
-    setActiveNav(crewsNavButton);
+    showMainSection(crewsPage, crewsNavButton);
     try{await refreshCrews()}
     catch(error){crewList.innerHTML=`<div class="category-empty">${error.message}</div>`}
 });
 backFromCrewsButton?.addEventListener("click",()=>{
-    crewsPage.hidden=true;
-    processingPage.hidden=false;
-    setActiveNav(document.querySelector(".nav-item:first-child"));
+    showMainSection(processingPage, document.getElementById("processingNavButton"));
 });
 crewSearchInput?.addEventListener("input",renderCrews);
 addCrewButton?.addEventListener("click",()=>openCrewModal());
@@ -1813,6 +2252,7 @@ function openContractorModal(item=null){
 function closeContractorModal(){contractorModal.hidden=true}
 
 contractorsNavButton?.addEventListener("click",async()=>{
+    document.getElementById("journalPage").hidden = true;
     closeDetails();processingPage.hidden=true;
     if(objectsPage)objectsPage.hidden=true;
     if(employeesPage)employeesPage.hidden=true;

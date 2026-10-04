@@ -30,6 +30,19 @@ def document_result(employee_status="found", object_status="found"):
 
 
 class ProcessingTests(unittest.TestCase):
+    def setUp(self):
+        # PO matching was added after these parser tests; keep them independent
+        # of the contents of the developer's PostgreSQL directory.
+        matcher = patch("app.services.processing_service.match_po", return_value={
+            "status": "found", "po": {"id": 1}, "candidates": [],
+        })
+        matcher.start()
+        self.addCleanup(matcher.stop)
+        for target, value in (("get_all_po_types", []), ("resolve_value_alias", None)):
+            mocked = patch("app.services.po_matcher." + target, return_value=value)
+            mocked.start()
+            self.addCleanup(mocked.stop)
+
     def test_http_json_contract(self):
         async def request(payload):
             messages = []
@@ -78,7 +91,7 @@ class ProcessingTests(unittest.TestCase):
                 result = build_report_result(document_result(employee, obj))
                 self.assertEqual(result["status"], expected)
                 self.assertEqual(result["full_name"], "Иванов Алексей Викторович")
-                self.assertEqual(result["report_date"], "19.09.2026")
+                self.assertEqual(result["report_date"], "2026-09-19")
         for missing in ("report_date", "object", "inspector", "general_contractor"):
             with self.subTest(missing=missing):
                 document = document_result(object_status="new")
@@ -90,7 +103,7 @@ class ProcessingTests(unittest.TestCase):
         document["business_data"]["report_date"]["value"] = "2026-09-19"
         result = prepare_report(document)
         self.assertEqual((result["employee_id"], result["object_id"]), (12, 34))
-        self.assertEqual(result["report_date"], "19.09.2026")
+        self.assertEqual(result["report_date"], "2026-09-19")
         self.assertEqual(get_field_value(document["business_data"]["report_date"]), "2026-09-19")
         self.assertIsNone(get_field_value({"found": False, "raw": "ignored"}, raw=True))
         document["business_data"]["inspector"]["found"] = False
@@ -144,6 +157,7 @@ class ProcessingTests(unittest.TestCase):
             self.assertEqual(valid["full_name"], "Иванов Алексей Викторович")
             self.assertEqual(valid["position"], "Мастер")
             self.assertEqual(valid["subcontractor"], "СПК")
+            self.assertEqual(valid["source_path"], str((folder / "valid.DOCX").resolve()))
 
     def test_folder_validation_and_empty_result(self):
         with tempfile.TemporaryDirectory() as directory:
