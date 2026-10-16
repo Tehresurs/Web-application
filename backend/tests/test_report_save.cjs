@@ -47,6 +47,26 @@ function setup(fetchRequest) {
     return controller;
 }
 
+test('archive warning stays visible without blocking an otherwise valid historical report',async()=>{
+    const warning='Объект находится в архиве';
+    const controller=setup(async path=>response(path.endsWith('/check')
+        ?{can_save:true,saved:false,warnings:[warning]}
+        :{saved:true,created:true,results:[{id:1}],warnings:[warning]}));
+    controller.bind(report());await controller.refresh();
+    assert.equal(controller.button.disabled,false);
+    assert.ok(controller.message.textContent.includes(warning));
+    await controller.save();assert.equal(controller.report.control_saved,true);
+    assert.ok(controller.message.textContent.includes(warning));
+});
+
+test('archive warning does not override other blocking report problems',async()=>{
+    const controller=setup(async()=>response({can_save:false,saved:false,problems:['Не выбрано ПО'],warnings:['Объект в архиве']}));
+    controller.bind(report());await controller.refresh();
+    assert.equal(controller.button.disabled,true);
+    assert.ok(controller.message.textContent.includes('Не выбрано ПО'));
+    assert.ok(controller.message.textContent.includes('Объект в архиве'));
+});
+
 test('duplicate result is shown plainly and cannot be saved again', async () => {
     let saves=0;
     const controller=setup(async path=>{

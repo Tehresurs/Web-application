@@ -1,0 +1,9 @@
+const {test}=require('node:test'),assert=require('node:assert/strict');
+const {employeeCurrentState}=require('../app/static/js/employee_absences.js');
+const today='2026-10-04',object={work_location:'OBJECT'},office={work_location:'OFFICE'},day={calculation_status:'CALCULATED',state:'ON_SHIFT',final_code:'FULL'};
+test('dismissal has priority over absence and normal state',()=>assert.equal(employeeCurrentState({...object,dismissal_date:today},[{reason:'Отпуск',date_from:today}],day,today),'Уволен'));
+test('free reason and inclusive end; ended period returns normal state',()=>{const absence={reason:'Обучение',date_from:'2026-10-01',date_to:today};assert.equal(employeeCurrentState(object,[absence],day,today),'Обучение');assert.equal(employeeCurrentState(object,[absence],day,'2026-10-05'),'Вахта');});
+test('object shift and off-shift come from existing calculated state',()=>{assert.equal(employeeCurrentState(object,[],day,today),'Вахта');assert.equal(employeeCurrentState(object,[],{...day,state:'OFF_SHIFT'},today),'МВ');});
+test('office weekday and weekend come from calendar',()=>{assert.equal(employeeCurrentState(office,[],day,today),'Рабочий день');assert.equal(employeeCurrentState(office,[],{...day,state:'UNKNOWN',final_code:'EMPTY',final_source_type:'WEEKEND'},today),'Выходной');});
+test('unknown or failed data never guesses state',()=>{assert.equal(employeeCurrentState(object,null,day,today),'Не определено');assert.equal(employeeCurrentState(object,[],{...day,calculation_status:'NEEDS_REVIEW'},today),'Не определено');assert.equal(employeeCurrentState(office,[],null,today),'Не определено');});
+test('overlapping active absences preserve all reasons',()=>assert.equal(employeeCurrentState(object,[{reason:'Обучение',date_from:today},{reason:'Медосмотр',date_from:today}],day,today),'Обучение / Медосмотр'));

@@ -1,17 +1,51 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {objectHierarchyRows,renderObjectHierarchy,createSubobjectDirectoryEditor}=require('../app/static/js/object_hierarchy.js');
+const {objectHierarchyRows,objectCatalogRows,renderObjectHierarchy,createSubobjectDirectoryEditor}=require('../app/static/js/object_hierarchy.js');
 const parents=[{id:2,name:'Якорь'},{id:1,name:'Арка'},{id:3,name:'Мост'}];
 const children=[{id:11,object_id:1,name:'Яма',is_active:true},{id:12,object_id:1,name:'Дорога',is_active:true},
     {id:13,object_id:2,name:'Подъезд',is_active:false}];
 class Element {
-    constructor(tag='div'){Object.assign(this,{tag,children:[],handlers:{},dataset:{},value:'',disabled:false,hidden:false});}
+    constructor(tag='div'){Object.assign(this,{tag,children:[],handlers:{},dataset:{},attributes:{},value:'',disabled:false,hidden:false,className:''});}
     append(...items){this.children.push(...items);}
     replaceChildren(...items){this.children=items;}
     addEventListener(name,fn){this.handlers[name]=fn;}
+    setAttribute(name,value){this.attributes[name]=String(value);}
     focus(){this.focused=true;}
 }
 const walk=x=>[x,...x.children.flatMap(walk)];
+test('promoted roots without legacy IDs keep separate selection and children',()=>{
+    const roots=[{id:null,entity_id:501,name:'Первый'},{id:null,entity_id:502,name:'Второй'}];
+    const kids=[{id:71,entity_id:601,name:'Ребёнок 1',is_active:true,current_hierarchy:{parent_entity_id:501}},
+        {id:72,entity_id:602,name:'Ребёнок 2',is_active:true,current_hierarchy:{parent_entity_id:502}}];
+    const container=new Element();
+    renderObjectHierarchy(container,objectHierarchyRows(roots,kids),{testMode:true,expanded:new Set(['entity:501','entity:502']),
+        selectedId:'entity:502',onAdd:()=>{},onEdit:()=>{},document:{createElement:tag=>new Element(tag)}});
+    const rows=walk(container).filter(n=>n.tag==='tr'&&n.dataset.entityId);
+    assert.equal(rows.length,4);
+    assert.equal(rows.filter(n=>n.attributes['aria-selected']==='true').length,1);
+    assert.equal(rows.find(n=>n.attributes['aria-selected']==='true').dataset.entityId,'502');
+    assert.equal(rows.filter(n=>n.dataset.entityId==='601').length,1);
+    assert.equal(rows.filter(n=>n.dataset.entityId==='602').length,1);
+});
+test('floating menu opens upward near bottom and stays within narrow viewport',()=>{
+    const {objectMenuPosition}=require('../app/static/js/object_hierarchy.js');
+    const up=objectMenuPosition({top:700,bottom:730,right:980},{width:220,height:180},{width:1000,height:768});
+    assert.equal(up.up,true);assert.equal(up.top,515);assert.equal(up.left,760);
+    const down=objectMenuPosition({top:20,bottom:50,right:100},{width:220,height:180},{width:320,height:768});
+    assert.equal(down.up,false);assert.equal(down.left,8);assert.equal(down.top,55);
+});
+test('archived records offer restoration without conversion or deletion',()=>{
+    const roots=[{id:1,name:'Архивный родитель',is_archived:true}];
+    const kids=[{id:22,object_id:1,name:'Архивный ребёнок',is_active:true,is_archived:true,parent_is_archived:true}];
+    const container=new Element();
+    renderObjectHierarchy(container,objectHierarchyRows(roots,kids,{activity:'all'}),{
+        expanded:new Set([1]),testMode:true,parents:roots,document:{createElement:tag=>new Element(tag)},
+        onAdd:()=>{},onEdit:()=>{},onPromote:()=>{},onMakeStandalone:()=>{},
+    });
+    const labels=walk(container).filter(n=>n.tag==='button').map(n=>n.textContent);
+    assert.equal(labels.filter(v=>v==='Восстановить из архива').length,2);
+    assert.ok(!labels.some(v=>/Преобразовать|Сделать самостоятельным|Создать подобъект|Удалить/.test(v)));
+});
 test('parents and children sort alphabetically without mixing parents',()=>{
     const rows=objectHierarchyRows(parents,children,{activity:'all'});
     assert.deepEqual(rows.map(x=>x.item.name),['Арка','Мост','Якорь']);
@@ -42,6 +76,29 @@ test('inactive filter exposes inactive children and keeps correct active count',
     const row=objectHierarchyRows(parents,children,{activity:'inactive',query:'Подъезд'})[0];
     assert.equal(row.active,0);assert.equal(row.total,1);assert.equal(row.children[0].is_active,false);
 });
+test('test catalog tabs separate roots, children, all records, and archived records',()=>{
+    const roots=[
+        {id:1,entity_id:101,name:'Активный объект',is_archived:false,activity_status:'ACTIVE'},
+        {id:2,entity_id:102,name:'Архивный объект',is_archived:true,activity_status:'ACTIVE'},
+    ];
+    const items=[
+        {id:11,entity_id:111,object_id:1,name:'Активный подобъект',is_archived:false,is_active:true,
+            current_hierarchy:{parent_entity_id:101}},
+        {id:12,entity_id:112,object_id:1,name:'Архивный подобъект',is_archived:true,is_active:true,
+            current_hierarchy:{parent_entity_id:101}},
+        {id:13,entity_id:113,object_id:2,name:'Подобъект архивного объекта',is_archived:false,is_active:true,
+            parent_is_archived:true,current_hierarchy:{parent_entity_id:102}},
+    ];
+    const all=objectCatalogRows(roots,items,{view:'all'});
+    assert.equal(all.length,1);assert.deepEqual(all[0].children.map(item=>item.name),['Активный подобъект']);
+    const standalone=objectCatalogRows(roots,items,{view:'standalone'});
+    assert.equal(standalone.length,1);assert.equal(standalone[0].children.length,0);
+    const childrenView=objectCatalogRows(roots,items,{view:'children'});
+    assert.equal(childrenView.length,1);assert.equal(childrenView[0].children[0].id,11);
+    const archived=objectCatalogRows(roots,items,{view:'archived'});
+    assert.deepEqual(archived.map(row=>row.item.id),[1,2]);
+    assert.deepEqual(archived[0].children.map(item=>item.id),[12]);
+});
 function render(){
     const container=new Element(),expanded=new Set(),events=[];
     renderObjectHierarchy(container,objectHierarchyRows(parents,children,{activity:'all'}),{
@@ -62,6 +119,108 @@ test('DOM renders inactive status and routes add/edit to their parent',()=>{
     assert.equal(events[0][1].id,1);assert.equal(events[1][1].object_id,1);
     assert.ok(walk(container).some(x=>x.className?.includes('edit-object-directory')));
     assert.ok(walk(container).some(x=>x.className?.includes('delete-object-directory')));
+});
+test('identity preview actions are opt-in and route parent and child to separate dialogs',()=>{
+    const calls=[];
+    const container=new Element();
+    const options={expanded:new Set(),activity:'all',document:{createElement:tag=>new Element(tag)},
+        onAdd:()=>{},onEdit:()=>{},onPromote:item=>calls.push(['promote',item]),onMakeStandalone:item=>calls.push(['standalone',item])};
+    renderObjectHierarchy(container,objectHierarchyRows(parents,children,{activity:'all'}),options);
+    const nodes=walk(container);
+    nodes.find(x=>x.textContent==='Преобразовать в подобъект').handlers.click();
+    nodes.find(x=>x.textContent==='Сделать самостоятельным объектом').handlers.click();
+    assert.equal(calls[0][0],'promote');assert.equal(calls[0][1].id,1);
+    assert.equal(calls[1][0],'standalone');assert.equal(calls[1][1].id,12);
+    const productionContainer=new Element();
+    renderObjectHierarchy(productionContainer,objectHierarchyRows(parents,children,{activity:'all'}),{
+        expanded:new Set(),onAdd:()=>{},onEdit:()=>{},document:{createElement:tag=>new Element(tag)}});
+    assert.ok(!walk(productionContainer).some(x=>x.textContent?.includes('Преобразовать в подобъект')));
+    assert.ok(!walk(productionContainer).some(x=>x.textContent?.includes('Сделать самостоятельным объектом')));
+});
+test('identity children render under their current parent without a legacy object ID',()=>{
+    const roots=[{id:1,entity_id:101,name:'Текущий родитель',current_hierarchy:{entity_id:101}}];
+    const currentChildren=[{id:12,entity_id:102,object_id:null,name:'Текущий ребёнок',is_active:true,
+        current_hierarchy:{entity_id:102,parent_entity_id:101}}];
+    const container=new Element(),events=[];
+    renderObjectHierarchy(container,objectHierarchyRows(roots,currentChildren),{
+        expanded:new Set(),activity:'active',document:{createElement:tag=>new Element()},
+        onAdd:()=>{},onEdit:()=>{},onMakeStandalone:child=>events.push(child)});
+    assert.ok(walk(container).some(x=>x.textContent==='Текущий ребёнок'));
+    walk(container).find(x=>x.textContent==='Сделать самостоятельным объектом').handlers.click();
+    assert.equal(events[0].entity_id,102);
+});
+test('test mode groups object actions in one menu and marks archived status',()=>{
+    const roots=[{id:1,name:'Объект',is_archived:false,activity_status:'ACTIVE'}];
+    const kids=[{id:22,object_id:1,name:'Подобъект',is_active:true,is_archived:false}];
+    const container=new Element();
+    renderObjectHierarchy(container,objectHierarchyRows(roots,kids),{
+        expanded:new Set([1]),activity:'all',testMode:true,parents:roots,document:{createElement:tag=>new Element(tag)},
+        onAdd:()=>{},onEdit:()=>{},onPromote:()=>{},onMakeStandalone:()=>{},
+    });
+    const nodes=walk(container);
+    assert.equal(nodes.filter(node=>node.className==='object-action-menu').length,2);
+    assert.equal(nodes.filter(node=>node.tag==='summary'&&node.textContent==='⋯').length,2);
+    assert.ok(nodes.some(node=>node.className.includes('object-catalog-icon')));
+    assert.ok(nodes.some(node=>node.className==='object-catalog-root-row'));
+    assert.ok(nodes.some(node=>node.textContent==='Создать подобъект'));
+    assert.ok(nodes.some(node=>node.textContent==='Преобразовать в подобъект'));
+    assert.ok(nodes.some(node=>node.textContent==='Сделать самостоятельным объектом'));
+    assert.ok(nodes.some(node=>node.textContent==='Действующий'));
+    assert.ok(nodes.every(node=>node.textContent!=='Редактировать объект'));
+    assert.ok(nodes.some(node=>(node.className||'').includes('archive-object-directory')&&node.dataset.id==='1'));
+    assert.ok(nodes.some(node=>(node.className||'').includes('archive-subobject-directory')&&node.dataset.id==='22'));
+});
+test('test mode renders a six-column hierarchy table and offers no third-level creation',()=>{
+    const roots=[{id:1,entity_id:101,name:'Объект',code:'OBJ-001',activity_status:'ACTIVE'}];
+    const kids=[{id:22,entity_id:202,object_id:1,name:'Подобъект',code:'SUB-001',is_active:true,
+        current_hierarchy:{entity_id:202,parent_entity_id:101}}];
+    const container=new Element();
+    renderObjectHierarchy(container,objectHierarchyRows(roots,kids,{activity:'all'}),{
+        expanded:new Set([1]),activity:'all',testMode:true,parents:roots,document:{createElement:tag=>new Element(tag)},
+        onAdd:()=>{},onEdit:()=>{},onPromote:()=>{},onMakeStandalone:()=>{},
+    });
+    const nodes=walk(container);
+    const table=nodes.find(node=>node.className==='ui-table object-catalog-table');
+    assert.ok(table);
+    assert.deepEqual(table.children[0].children[0].children.map(cell=>cell.textContent),
+        ['Наименование','Тип','Статус','Родительский объект','Код','Действия']);
+    assert.ok(nodes.some(node=>node.textContent==='OBJ-001'));
+    assert.ok(nodes.some(node=>node.textContent==='SUB-001'));
+    assert.ok(nodes.some(node=>node.textContent==='Объект'));
+    assert.ok(nodes.some(node=>node.textContent==='Подобъект'));
+    const childRow=nodes.find(node=>node.className==='object-catalog-child-row');
+    assert.ok(childRow);
+    assert.ok(!walk(childRow).some(node=>(node.className||'').includes('add-subobject-directory')));
+    assert.ok(nodes.some(node=>(node.className||'').includes('add-subobject-directory')));
+    let selected=null;
+    renderObjectHierarchy(container,objectHierarchyRows(roots,kids,{activity:'all'}),{
+        expanded:new Set([1]),activity:'all',testMode:true,parents:roots,document:{createElement:tag=>new Element(tag)},
+        onSelect:id=>{selected=id;},onAdd:()=>{},onEdit:()=>{},
+    });
+    walk(container).find(node=>node.className==='object-catalog-child-row').handlers.click({target:{closest:()=>null}});
+    assert.equal(selected,22);
+});
+test('test mode uses employee badge tones and selected-row semantics for object statuses',()=>{
+    const roots=[
+        {id:1,name:'Активный',activity_status:'ACTIVE'},
+        {id:2,name:'Приостановлен',activity_status:'SUSPENDED'},
+        {id:3,name:'Завершён',activity_status:'COMPLETED'},
+        {id:4,name:'Архив',is_archived:true},
+    ];
+    const container=new Element();
+    renderObjectHierarchy(container,objectHierarchyRows(roots,[],{activity:'all'}),{
+        expanded:new Set([1]),activity:'all',testMode:true,selectedId:1,document:{createElement:tag=>new Element(tag)},
+        onAdd:()=>{},onEdit:()=>{},
+    });
+    const nodes=walk(container);
+    assert.ok(nodes.some(node=>node.textContent==='Действующий'&&node.className.includes('badge-green')));
+    assert.ok(nodes.some(node=>node.textContent==='Приостановлен'&&node.className.includes('badge-orange')));
+    assert.ok(nodes.some(node=>node.textContent==='Завершён'&&node.className.includes('badge-neutral')));
+    assert.ok(nodes.some(node=>node.textContent==='Архив'&&node.className.includes('ui-badge-muted')));
+    const firstRow=nodes.find(node=>node.className==='object-catalog-root-row'&&node.dataset.recordId==='1');
+    assert.equal(firstRow.attributes['aria-selected'],'true');
+    const archivedRow=nodes.find(node=>node.className==='object-catalog-root-row'&&node.dataset.recordId==='4');
+    assert.equal(archivedRow.attributes['aria-selected'],'false');
 });
 function editor({used=false,fail=false}={}){
     const ids={},calls=[],saved=[];

@@ -1,8 +1,11 @@
 from app.database.db import get_connection
+from app.repositories import construction_identity as identity
+from app.repositories import daily_control_identity as entity_facts
 
 
-def find_assignment(cursor, employee_id, object_id, po_id, assignment_id=None):
+def find_assignment(cursor, employee_id, object_id, po_id, assignment_id=None,entity_id=None):
     """Hold the assignment stable until validation/save transaction completes."""
+    if entity_id is not None:return entity_facts.assignments(cursor.connection,employee_id,entity_id,po_id,assignment_id)
     cursor.execute(
         """SELECT ea.id, ea.employee_id, ea.object_id, ea.po_id, ea.category_id
            FROM employee_assignments ea
@@ -33,16 +36,19 @@ _FACT_FIELDS = ("id", "report_date", "employee_id", "employee_name", "object_id"
 
 
 def saved_source(cursor, digest):
+    if identity.enabled(cursor.connection):return entity_facts.read(cursor.connection,'r.source_sha256=%s',(digest,))
     cursor.execute(_FACT_SELECT + " WHERE r.source_sha256 = %s ORDER BY r.id", (digest,))
     return [dict(zip(_FACT_FIELDS, row)) for row in cursor.fetchall()]
 
 
 def get_control_fact(cursor, fact_id):
+    if identity.enabled(cursor.connection):return entity_facts.read(cursor.connection,'r.id=%s',(fact_id,))[0]
     cursor.execute(_FACT_SELECT + " WHERE r.id = %s", (fact_id,))
     return dict(zip(_FACT_FIELDS, cursor.fetchone()))
 
 
 def insert_fact(cursor, report_date, assignment, source_file, digest):
+    if identity.enabled(cursor.connection):return entity_facts.insert(cursor.connection,report_date,assignment,source_file,digest)
     if assignment.get("subobject_id") is not None:
         cursor.execute("SELECT object_id, is_active FROM construction_subobjects WHERE id = %s FOR SHARE",
                        (assignment["subobject_id"],))
@@ -120,10 +126,11 @@ def _journal_options(cursor, date_from, date_to):
 
 
 def get_journal(date_from, date_to, employee_id=None, object_id=None, view="object",
-                *, subobject_id=None, include_subobjects=True, subcontractor_id=None):
+                *, subobject_id=None, include_subobjects=True, subcontractor_id=None,entity_id=None):
     where, params = _journal_filter(date_from, date_to, employee_id, object_id,
                                     subobject_id, include_subobjects, subcontractor_id)
     with get_connection() as conn:
+        if identity.enabled(conn):return entity_facts.journal(conn,date_from,date_to,employee_id,object_id,view,subobject_id,include_subobjects,subcontractor_id,entity_id)
         with conn.cursor() as cursor:
             cursor.execute(
                 """SELECT r.id, r.report_date, r.employee_id, e.full_name,
@@ -147,6 +154,8 @@ def get_journal(date_from, date_to, employee_id=None, object_id=None, view="obje
 
 
 def _control_item(item):
+    if item.get('entity_id') is not None:
+        return {k:item.get(k) for k in ('entity_id','parent_entity_id','current_hierarchy','control_item_type','control_item_key','control_item_name')}
     child = item.get("subobject_id") is not None
     kind = "subobject" if child else "object"
     return {"control_item_type": kind,
@@ -157,8 +166,8 @@ def _control_item(item):
 def _journal_summary(items):
     return {
         "facts_count": len(items),
-        "objects_count": len({item["object_id"] for item in items}),
-        "subobjects_count": len({item["subobject_id"] for item in items if item.get("subobject_id") is not None}),
+        "objects_count": len({item.get('entity_id') or item["object_id"] for item in items}),
+        "subobjects_count": len({item.get('entity_id') or item["subobject_id"] for item in items if item.get('control_item_type')=='subobject'}),
         "employees_count": len({item["employee_id"] for item in items}),
         "days_count": len({item["report_date"] for item in items}),
     }
@@ -186,6 +195,8 @@ def summarize_journal(items, view):
         pair["days_count"] = len(pair["dates"])
         metadata = {k: pair[k] for k in ("object_id", "object_name", "subobject_id", "subobject_name",
                                         "control_item_key", "control_item_name", "control_item_type")} if view == "object" else {"employee_id": pair["employee_id"], "full_name": pair["full_name"]}
+        if view=='object' and pair.get('entity_id') is not None:
+            metadata.update({k:pair[k] for k in ('entity_id','parent_entity_id','current_hierarchy')})
         group = groups.setdefault(pair[primary], {**metadata, "items": []})
         group["items"].append(pair)
     for group in groups.values():

@@ -24,7 +24,112 @@ def inputs(movements=(),**changes):
 def day(data,number=1,month=10,year=2026):return calculate_employee_day(data,date(year,month,number))
 
 
+def rail_departure(stamp='2026-10-30T15:00',arrival='2026-11-02T07:30'):
+    item=movement(1,'DEPARTURE',stamp,'RAIL')
+    item.update(ticket_id=1,ticket_departure=item['event_datetime'],
+                ticket_arrival=datetime.fromisoformat(arrival),ticket_origin='Салым',ticket_destination='Тюмень')
+    return item
+
+
 class CalendarCalculationTests(unittest.TestCase):
+    def test_departure_travel_crosses_month_and_includes_arrival(self):
+        data=inputs([rail_departure()]);before=deepcopy(data)
+        october=calculate_employee_month(data,2026,10)['days']
+        november=calculate_employee_month(data,2026,11)['days']
+        self.assertEqual([d['final_code'] for d in october[29:]+november[:2]],['HALF','TRAVEL','TRAVEL','TRAVEL'])
+        self.assertEqual(november[2]['final_code'],'OFF_SHIFT')
+        self.assertEqual(data,before)
+
+    def test_departure_ticket_time_boundaries_and_same_day(self):
+        for clock,code in [('12:59','TRAVEL'),('13:00','HALF'),('19:59','HALF'),('20:00','FULL'),('21:00','FULL')]:
+            data=inputs([rail_departure('2026-10-30T'+clock)])
+            self.assertEqual(day(data,30)['final_code'],code)
+            self.assertEqual(day(data,31)['final_code'],'TRAVEL')
+        data=inputs([rail_departure('2026-10-30T15:00','2026-10-30T23:00')])
+        self.assertEqual(day(data,30)['final_code'],'HALF')
+        self.assertEqual(day(data,31)['final_code'],'OFF_SHIFT')
+
+    def test_confirmed_ticket_supersedes_exact_unlinked_import(self):
+        linked=movement(2,'ARRIVAL','2026-10-16T12:22','RAIL','2026-10-15T13:56')
+        linked.update(departure_station='Origin',arrival_station='Destination')
+        old=movement(1,'ARRIVAL','2026-10-16T12:22','RAIL')
+        old.update(departure_station=' origin ',arrival_station='DESTINATION')
+        data=inputs([old,linked]);before=deepcopy(data)
+        self.assertEqual(day(data,15)['auto_code'],'TRAVEL')
+        result=day(data,16)
+        self.assertEqual(result['auto_code'],'HALF')
+        self.assertEqual(result['movement_ids'],[2])
+        self.assertFalse(result['warnings'])
+        self.assertEqual(data,before)
+
+    def test_distinct_or_ambiguous_rail_movements_are_not_merged(self):
+        linked=movement(2,'ARRIVAL','2026-10-16T12:22','RAIL','2026-10-15T13:56')
+        linked.update(departure_station='Origin',arrival_station='Destination')
+        old=movement(1,'ARRIVAL','2026-10-16T12:22','RAIL')
+        old.update(departure_station='Other',arrival_station='Destination')
+        self.assertEqual(day(inputs([old,linked]),16)['calculation_status'],'NEEDS_REVIEW')
+        old['departure_station']='Origin'
+        other={**linked,'id':3,'ticket_id':3}
+        self.assertEqual(day(inputs([old,linked,other]),16)['calculation_status'],'NEEDS_REVIEW')
+
+    def test_opposite_ticket_endpoint_time_boundaries(self):
+        for clock,expected in [('00:00','TRAVEL'),('12:59','TRAVEL'),('13:00','TRAVEL'),('19:59','TRAVEL'),('20:00','TRAVEL'),('23:04','TRAVEL')]:
+            m=movement(1,'ARRIVAL','2026-11-02T12:22','RAIL','2026-10-30T'+clock)
+            data=inputs([m])
+            self.assertEqual(day(data,30)['auto_code'],expected)
+            self.assertEqual(day(data,31)['auto_code'],'TRAVEL')
+            self.assertEqual(day(data,1,11)['auto_code'],'TRAVEL')
+        for clock,expected in [('00:00','TRAVEL'),('07:59','TRAVEL'),('08:00','TRAVEL'),('12:59','TRAVEL'),('13:00','TRAVEL'),('23:59','TRAVEL')]:
+            data=inputs([rail_departure(arrival='2026-11-02T'+clock)])
+            self.assertEqual(day(data,2,11)['auto_code'],expected)
+
+    def test_kanshin_departure_to_site_is_travel_at_2304(self):
+        outbound=rail_departure('2026-10-09T06:54','2026-10-09T15:30')
+        inbound=movement(2,'ARRIVAL','2026-10-12T07:29','RAIL','2026-10-11T23:04')
+        data=inputs([outbound,inbound])
+        self.assertEqual([day(data,n)['final_code'] for n in (9,10,11,12)],
+                         ['TRAVEL','OFF_SHIFT','TRAVEL','FULL'])
+
+    def test_biryukov_home_arrival_is_travel_then_off_shift(self):
+        data=inputs([rail_departure('2026-10-22T12:35','2026-10-23T04:21')])
+        self.assertEqual([day(data,n)['final_code'] for n in (22,23,24)],
+                         ['TRAVEL','TRAVEL','OFF_SHIFT'])
+
+    def test_arrival_rejects_reverse_time_on_same_date(self):
+        m=movement(1,'ARRIVAL','2026-10-01T07:00','RAIL','2026-10-01T08:00')
+        result=day(inputs([m]))
+        self.assertEqual(result['calculation_status'],'NEEDS_REVIEW')
+        self.assertIn('RAIL_SOURCE_CONFLICT',[w['code'] for w in result['warnings']])
+
+    def test_departure_invalid_ticket_does_not_invent_travel(self):
+        for change in [dict(ticket_id=None),dict(ticket_departure=None),dict(ticket_arrival=None),
+                       dict(ticket_departure=datetime(2026,10,30,14)),
+                       dict(ticket_arrival=datetime(2026,10,29,23)),
+                       dict(ticket_arrival=datetime(2026,10,30,14)),
+                       dict(ticket_origin='Тюмень'),dict(ticket_destination='Салым')]:
+            data=inputs([{**rail_departure(),**change}])
+            self.assertEqual(day(data,31)['auto_code'],'OFF_SHIFT',change)
+            self.assertIn('RAIL_SOURCE_MISSING' if change.get('ticket_id',1) is None else 'RAIL_SOURCE_CONFLICT',
+                          [w['code'] for w in day(data,30)['warnings']])
+
+    def test_departure_travel_preserves_conflicts_and_priority(self):
+        data=inputs([rail_departure(),movement(2,'ARRIVAL','2026-10-31T07:00')])
+        for d in [date(2026,10,31),date(2026,11,1)]:
+            result=calculate_employee_day(data,d)
+            self.assertEqual(result['auto_code'],'EMPTY')
+            self.assertIn('RAIL_TRAVEL_CONFLICT',[w['code'] for w in result['warnings']])
+        data=inputs([rail_departure()],overrides=[{'id':1,'work_date':date(2026,10,31),'value':'FULL'}])
+        self.assertEqual((day(data,31)['auto_code'],day(data,31)['final_code']),('TRAVEL','FULL'))
+        data['sick_periods']=[{'date_from':date(2026,10,31),'date_to':None}]
+        self.assertEqual(day(data,31)['final_code'],'EMPTY')
+        data['dismissal_date']=date(2026,10,31)
+        self.assertEqual(day(data,31)['final_code'],'DISMISSED')
+        self.assertEqual(day(data,1,11)['final_code'],'EMPTY')
+
+    def test_departure_overlapping_trips_require_review(self):
+        data=inputs([rail_departure(),movement(2,'ARRIVAL','2026-11-03T07:00','RAIL','2026-11-01T10:00')])
+        self.assertEqual(day(data,1,11)['calculation_status'],'NEEDS_REVIEW')
+
     def test_arrival_boundaries_for_rail_and_self(self):
         for transport in ('RAIL','SELF'):
             for clock,code in [('07:59','FULL'),('07:59:59.999999','FULL'),('08:00','HALF'),('12:59','HALF'),('12:59:59.999999','HALF'),('13:00','TRAVEL')]:
@@ -73,7 +178,7 @@ class CalendarCalculationTests(unittest.TestCase):
             self.assertTrue(all(day(data,n)['auto_code']==expected for n in range(2,32)))
             self.assertEqual(data,before)
 
-    def test_departure_does_not_create_multiday_travel(self):
+    def test_departure_without_ticket_does_not_create_multiday_travel(self):
         data=inputs([movement(1,'DEPARTURE','2026-10-06T10:00','RAIL')])
         self.assertEqual([day(data,n)['auto_code'] for n in (6,7,8)],['TRAVEL','OFF_SHIFT','OFF_SHIFT'])
 
@@ -161,6 +266,22 @@ class CalendarApiTests(unittest.TestCase):
 
     def calendar(self,query='year=2026&month=10',employee=2):
         return http_request('GET',f'/api/employees/{employee}/luvr/calendar',query=query)
+
+    def test_departure_ticket_confirm_annul_restore_across_month(self):
+        data=coupon_pdf(departure_station='Салым',arrival_station='Тюмень',
+                        departure_datetime='30.10.2026 15:00',arrival_datetime='02.11.2026 07:30')
+        ticket=test_rail_tickets.upload_request([('departure.pdf',data)])[1]['items'][0]
+        def action(name):
+            status,result=http_request('POST',f'/api/rail-tickets/{ticket["id"]}/{name}',{})
+            self.assertEqual(status,200,result)
+        self.assertEqual(self.calendar('year=2026&month=11')[1]['item']['days'][0]['final_code'],'EMPTY')
+        action('confirm')
+        october=self.calendar()[1]['item']['days'];november=self.calendar('year=2026&month=11')[1]['item']['days']
+        self.assertEqual([d['final_code'] for d in october[29:]+november[:2]],['HALF','TRAVEL','TRAVEL','TRAVEL'])
+        action('annul')
+        self.assertEqual(self.calendar('year=2026&month=11')[1]['item']['days'][0]['final_code'],'EMPTY')
+        action('restore')
+        self.assertEqual(self.calendar('year=2026&month=11')[1]['item']['days'],november)
 
     def create(self,kind,payload):
         status,body=http_request('POST',f'/api/employees/2/luvr/{kind}',payload)

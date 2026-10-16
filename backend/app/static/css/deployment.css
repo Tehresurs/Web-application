@@ -1,0 +1,29 @@
+#deploymentPage[hidden], #deploymentReport[hidden] { display:none!important; }
+#deploymentPage { min-width:0; }
+#deploymentPage .deployment-toolbar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:14px; }
+#deploymentPage h2 { margin:0 auto 0 0; color:#075783; }
+#deploymentPage input { border:1px solid #d6e2ed; border-radius:5px; padding:8px; font:inherit; }
+#deploymentPage .deployment-tabs { display:flex; gap:8px; margin:12px 0; }
+#deploymentReport { padding:18px; min-width:0; }
+#deploymentReport h3, #deploymentReportDate { text-align:center; }
+#deploymentPage .deployment-contract { text-align:right; line-height:1.5; }
+#deploymentPage .deployment-scroll { max-width:100%; overflow-x:auto; }
+#deploymentPage table { width:100%; min-width:1200px; table-layout:fixed; border-collapse:collapse; font-size:12px; }
+#deploymentPage th, #deploymentPage td { border:1px solid #d6e2ed; padding:9px; white-space:pre-line; vertical-align:top; overflow-wrap:anywhere; }
+#deploymentPage th { background:#edf5fb; color:#174765; }
+#deploymentPage th:first-child { width:40px; }
+#deploymentPage td:first-child { text-align:center; }
+#deploymentPage th:nth-child(2) { width:24%; }
+#deploymentPage th:nth-child(3) { width:14%; }
+#deploymentPage th:nth-child(4) { width:19%; }
+#deploymentPage th:nth-child(5) { width:13%; }
+#deploymentPage th:nth-child(6) { width:105px; }
+#deploymentPage td:nth-child(6) { overflow-wrap:normal; }
+#deploymentTotals { display:flex; gap:20px; flex-wrap:wrap; padding-top:16px; font-weight:600; }
+#deploymentWarnings:not(:empty) { border:1px solid #efcd91; background:#fff8ed; padding:12px; margin-bottom:12px; border-radius:6px; }
+#deploymentWarnings li { margin:5px 0; }
+body:has(#deploymentPage:not([hidden])) .employee-default-page-title { visibility:hidden; }
+body:has(#deploymentPage:not([hidden])) .sidebar { background:#132e50; color:#e6eef9; }
+body:has(#deploymentPage:not([hidden])) .sidebar .nav-item,
+body:has(#deploymentPage:not([hidden])) .sidebar .logo { color:#dbe7f8; }
+body:has(#deploymentPage:not([hidden])) .sidebar .nav-item.active { background:#255185; color:#fff; }

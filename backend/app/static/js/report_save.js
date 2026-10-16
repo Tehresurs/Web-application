@@ -23,7 +23,18 @@ class ReportSaveController {
 
     payload(report) {
         const payload = {path: report.source_path, assignments: {}};
+        if(report.review_options?.fields?.general_contractor?.approved && report.assignments?.null?.id)
+            payload.absence_assignment_id=report.assignments.null.id;
+        if(report.matrix_context){
+            payload.expected_employee_id=report.matrix_context.employee_id;
+            payload.expected_report_date=report.matrix_context.date;
+            if(report.matrix_context.replace_fact_id){
+                payload.replace_fact_id=report.matrix_context.replace_fact_id;
+                payload.replace_source_sha256=report.matrix_context.replace_source_sha256;
+            }
+        }
         payload.subobject_id = report.subobject_id ?? null;
+        if (report.object_status === "found" && report.entity_id) payload.entity_id = report.entity_id;
         if (Object.keys(report.alias_conflicts || {}).length) payload.unresolved_aliases = Object.keys(report.alias_conflicts);
         for (const key of ["employee", "object", "general_contractor", "subcontractor"]) {
             if (report[`${key}_status`] === "found" && report[`${key}_id`]) {
@@ -64,6 +75,12 @@ class ReportSaveController {
     }
 
     async request(path, payload) {
+        if(path==='/api/daily-control-results' && payload.replace_fact_id && typeof window!=='undefined'){
+            const report=window.processingReports.find(r=>r.source_path===payload.path && r.matrix_context);
+            if(!report || report.matrix_preview_signature!==JSON.stringify(payload))throw Error('Сначала выполните проверку и просмотрите сравнение версий.');
+            if(!window.confirm('Заменить выбранный исходный отчёт? Старые факты и ручные корректировки будут сохранены в архиве, новые данные займут их место.'))throw Error('Замена отменена');
+            payload={...payload,confirm_replacement:true,replacement_token:report.matrix_preview_token};
+        }
         const response = await this.fetchRequest(path, {
             method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload),
         });
@@ -73,6 +90,7 @@ class ReportSaveController {
             throw new Error(detail?.problems?.join("; ") || result.message ||
                 (typeof detail === "string" ? detail : detail?.message) || "Не удалось выполнить запрос");
         }
+        if(typeof document!=='undefined')document.dispatchEvent(new CustomEvent('matrix-report-review-result',{detail:{payload,result}}));
         return result;
     }
 
@@ -95,6 +113,7 @@ class ReportSaveController {
             this.message.textContent = report.control_saved ? "Факт контроля уже записан в журнал."
                 : this.canSave ? `Проверка завершена. Будет сохранена дата отчёта: ${report.report_date}.`
                     : (result.problems || []).join("; ") || "Устраните замечания и выберите назначения для всех ПО.";
+            if(result.warnings?.length)this.message.textContent+=' '+result.warnings.join(' ');
         } catch (error) {
             if (version === this.version && report === this.report) this.message.textContent = error.message;
         } finally {
@@ -121,6 +140,7 @@ class ReportSaveController {
             report.control_saved = true;
             report.control_results = result.results;
             if (report === this.report) this.message.textContent = result.created === false ? "Этот результат уже сохранён." : "Факт контроля записан в журнал.";
+            if(report===this.report&&result.warnings?.length)this.message.textContent+=' '+result.warnings.join(' ');
         } catch (error) {
             if (report === this.report) this.message.textContent = `${error.message}. Нажмите «Проверить готовность» перед повторной попыткой.`;
         } finally {
@@ -183,6 +203,8 @@ class BatchReportSaveController extends ReportSaveController {
                 }
                 const result = await this.request("/api/daily-control-results/check", this.payload(report));
                 if (version !== this.version || signature !== this.key()) return;
+                report.server_problems=result.problems || [];
+                if(typeof renderReports==='function')renderReports();
                 report.control_saved = result.saved === true;
                 if (!report.control_saved && (!result.can_save || !this.ready(report))) {
                     problems.push(`${report.filename}: ${(result.problems || []).join('; ') || 'завершите проверку и выбор назначений'}`);

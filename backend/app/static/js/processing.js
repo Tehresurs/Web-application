@@ -24,14 +24,15 @@ let closeDetailsTimer;
 let activeReportIndex = null;
 const processingLogs = [];
 const reportSaver = new BatchReportSaveController({
-    getReports: () => window.processingReports,
+    getReports: () => window.matrixActiveReport ? [window.matrixActiveReport] : window.processingReports,
     button: document.getElementById("saveResultButton"),
     retryButton: document.getElementById("checkSaveResultButton"),
     message: document.getElementById("saveResultMessage"),
     fetchRequest: (...args) => fetch(...args),
     ready: report => {
+        if (report.review_options?.enabled) return reportReviewIssues(report).length === 0;
         if (getFinalReportStatus(report) !== "verified" || !report.report_date ||
-            !report.employee_id || !report.object_id || !report.assignments_verified ||
+            !report.employee_id || !(report.entity_id || report.object_id) || !report.assignments_verified ||
             (report.subcontractor && !report.subcontractor_id) ||
             (report.problems || []).length) return false;
         const poIds = [report.general_contractor_id];
@@ -39,7 +40,7 @@ const reportSaver = new BatchReportSaveController({
             const item = report.assignments?.[poId];
             return poId && item?.id && item.category_id &&
                 Number(item.employee_id) === Number(report.employee_id) &&
-                Number(item.object_id) === Number(report.object_id) && Number(item.po_id) === Number(poId);
+                (report.entity_id ? Number(item.entity_id) === Number(report.entity_id) : Number(item.object_id) === Number(report.object_id)) && Number(item.po_id) === Number(poId);
         });
     },
     onState: saving => {
@@ -158,6 +159,12 @@ function updateStatistics(result) {
 }
 
 function getFinalReportStatus(report) {
+    if (report.review_options?.enabled) {
+        if (Object.keys(report.alias_conflicts || {}).length) return 'needs_approval';
+        if (reviewBaseProblems(report).some(p=>/дат|не удалось обработать/i.test(p))) return 'error';
+        const fields=['employee','object','general_contractor','subcontractor'];
+        return fields.every(f=>reviewApproved(report,f)||report[`${f}_status`]==='found') ? 'verified' : 'needs_approval';
+    }
     if (Object.keys(report.alias_conflicts || {}).length) return "needs_approval";
     if (report.status === "error") return "error";
 
@@ -194,6 +201,7 @@ function buildStatus(report) {
     const [status, label] = view[finalStatus] || view.attention;
     badge.className = `status-badge ${status}`;
     badge.textContent = label;
+    if(report.review_options?.enabled && reportReviewIssues(report).length){badge.className='status-badge warning';badge.textContent=reportReviewIssues(report).includes('Нет категории')?'Нет категории':'Требует согласования';}
     return badge;
 }
 
@@ -202,12 +210,13 @@ function renderReports() {
     resultTable.replaceChildren();
     const query = searchInput.value.trim().toLocaleLowerCase("ru");
     window.processingReports.forEach((report, index) => {
+        if(window.matrixActiveReport && report!==window.matrixActiveReport)return;
         if (query && ![report.filename, report.full_name, report.object_name]
             .some(value => (value || "").toLocaleLowerCase("ru").includes(query))) return;
         if (dateFilter.value !== "all" && report.report_date !== dateFilter.value) return;
-        if (statusFilter.value === "problem" && getFinalReportStatus(report) === "verified") return;
+        if (statusFilter.value === "problem" && (report.review_options?.enabled ? reportReviewIssues(report).length===0 : getFinalReportStatus(report) === "verified")) return;
         if (statusFilter.value === "new" && getFinalReportStatus(report) !== "has_new") return;
-        if (statusFilter.value === "ok" && getFinalReportStatus(report) !== "verified") return;
+        if (statusFilter.value === "ok" && (report.review_options?.enabled ? reportReviewIssues(report).length>0 : getFinalReportStatus(report) !== "verified")) return;
         if (statusFilter.value === "error" && getFinalReportStatus(report) !== "error") return;
         const row = document.createElement("tr");
         [index + 1, report.full_name, report.position, report.report_date,
@@ -219,8 +228,10 @@ function renderReports() {
             });
         row.firstElementChild.title = report.filename;
         const statusCell = document.createElement("td");
-        statusCell.title = (report.problems || []).join("; ");
+        const issues=report.review_options?.enabled ? reportReviewIssues(report) : report.problems || [];
+        statusCell.title = issues.join("; ");
         statusCell.append(buildStatus(report));
+        if(issues.length){const remarks=document.createElement('div');remarks.className='review-list-issues';remarks.textContent=issues.join('; ');statusCell.append(remarks);}
         row.append(statusCell);
         const action = document.createElement("td");
         const button = document.getElementById("viewButtonTemplate")
@@ -230,6 +241,12 @@ function renderReports() {
         row.append(action);
         resultTable.append(row);
     });
+    if(window.processingReports.some(r=>r.review_options?.enabled)){
+        const reports=window.processingReports;
+        updateStatistics({total:reports.length,ok:reports.filter(r=>r.control_saved||reportReviewIssues(r).length===0).length,
+            warning:reports.filter(r=>getFinalReportStatus(r)!=='error'&&reportReviewIssues(r).length>0).length,
+            error:reports.filter(r=>getFinalReportStatus(r)==='error').length});
+    }
     if (!resultTable.children.length) {
         const row = document.createElement("tr");
         row.className = "empty-row";
@@ -245,17 +262,18 @@ searchInput.addEventListener("input", renderReports);
 statusFilter.addEventListener("change", renderReports);
 dateFilter.addEventListener("change", renderReports);
 refreshButton.addEventListener("click", renderReports);
-clearResultsButton.addEventListener("click",()=>{window.processingReports=[];document.querySelectorAll(".stat-number").forEach(n=>n.textContent="—");renderReports();downloadHtmlButton.disabled=true;});
+clearResultsButton.addEventListener("click",()=>{window.matrixActiveReport=null;document.getElementById("matrixSingleReportPanel")?.setAttribute("hidden","");window.processingReports=[];document.querySelectorAll(".stat-number").forEach(n=>n.textContent="—");renderReports();downloadHtmlButton.disabled=true;});
 function canExportReports() {
     return window.processingReports.length > 0 && window.processingReports.every(report => {
+        if(report.review_options?.enabled)return reportReviewIssues(report).length===0;
         if (getFinalReportStatus(report) !== "verified" || !report.assignments_verified) return false;
-        if (!report.employee_id || !report.object_id || !report.general_contractor_id) return false;
+        if (!report.employee_id || !(report.entity_id || report.object_id) || !report.general_contractor_id) return false;
         const poIds = [report.general_contractor_id];
         return poIds.every(poId => {
             const assignment = report.assignments?.[poId];
             return poId && assignment?.id && assignment.category_id &&
                 Number(assignment.employee_id) === Number(report.employee_id) &&
-                Number(assignment.object_id) === Number(report.object_id) &&
+                (report.entity_id ? Number(assignment.entity_id) === Number(report.entity_id) : Number(assignment.object_id) === Number(report.object_id)) &&
                 Number(assignment.po_id) === Number(poId);
         });
     });
@@ -267,18 +285,18 @@ async function verifyReportAssignments(reports) {
         if (getFinalReportStatus(report) !== "verified") continue;
         try {
             if (!byEmployee.has(report.employee_id)) {
-                const response = await fetch(`/api/employees/${report.employee_id}/assignments`);
+                const response = await fetch(report.review_options?.enabled ? `/api/daily-control-results/review-assignments/${report.employee_id}` : `/api/employees/${report.employee_id}/assignments`);
                 const data = await response.json();
                 if (!response.ok) throw new Error(data.message || `HTTP ${response.status}`);
                 byEmployee.set(report.employee_id, data.items || []);
             }
             const assignments = {};
             for (const po of await getReportAssignmentPoEntries(report)) {
-                const matches = byEmployee.get(report.employee_id).filter(item => Number(item.object_id) === Number(report.object_id) && Number(item.po_id) === po.id);
+                const matches = byEmployee.get(report.employee_id).filter(item => (report.entity_id ? Number(item.entity_id) === Number(report.entity_id) : Number(item.object_id) === Number(report.object_id)) && Number(item.po_id) === po.id);
                 if (matches.length === 1) assignments[po.id] = matches[0];
             }
             report.assignments = assignments;
-            report.assignment_key = `${report.employee_id}:${report.object_id}:${report.general_contractor_id}`;
+            report.assignment_key = `${report.employee_id}:${report.entity_id ? `entity:${report.entity_id}` : report.object_id}:${report.general_contractor_id}`;
             report.assignments_verified = true;
         } catch (error) {
             report.assignments_verified = false;
@@ -307,7 +325,7 @@ function updateExportButtons() {
 function getExportTable() {
     const headers = ["Файл", "Инженер", "Должность", "Дата отчёта", "Объект", "Генподрядчик", "Субподрядчик", "ПО назначения", "Категория", "ID назначения"];
     const rows = window.processingReports.flatMap(report =>
-        [report.general_contractor_id].map(poId => {
+        [report.review_options?.enabled && reviewApproved(report,'general_contractor') ? null : report.general_contractor_id].map(poId => {
             const assignment = report.assignments[poId];
             return [report.filename, report.resolved_employee?.name || report.full_name,
                 report.position, report.report_date, report.resolved_object?.name || report.object_name,
@@ -383,6 +401,7 @@ parseButton.addEventListener("click", async () => {
     checkFolderButton.disabled = true;
     folderPath.disabled = true;
     closeDetails();
+    window.matrixActiveReport=null;document.getElementById('matrixSingleReportPanel')?.setAttribute('hidden','');
     window.processingReports = [];
     renderReports();
     document.querySelectorAll(".stat-number").forEach(node => { node.textContent = "—"; });
@@ -407,6 +426,7 @@ parseButton.addEventListener("click", async () => {
                 problems: [error.error || "Не удалось обработать файл"],
             })),
         ], path);
+        for(const report of window.processingReports) await loadReportReviewOptions(report);
         updateStatistics(result);
         dateFilter.innerHTML='<option value="all">Все даты</option>';
         [...new Set(window.processingReports.map(r=>r.report_date).filter(Boolean))].sort().reverse().forEach(d=>{const o=document.createElement("option");o.value=d;o.textContent=d;dateFilter.append(o)});
@@ -414,6 +434,7 @@ parseButton.addEventListener("click", async () => {
         renderReports();
         folderInfo.textContent = `Проверка завершена. Отчётов: ${result.total}`;
         await verifyReportAssignments(window.processingReports);
+        renderReports();
         window.processingReports.forEach(report => {
             if (["subobject_exact", "subobject_alias"].includes(report.object_match_source)) {
                 const event = report.object_match_source === "subobject_exact" ? "SUBOBJECT_EXACT_MATCH" : "SUBOBJECT_ALIAS_MATCH";
@@ -471,6 +492,7 @@ function recalculateReportStatus(report) {
 }
 
 function confirmCandidate(report, config, candidate) {
+    report.server_problems=[];
     const id = getCandidateId(candidate);
     const name = getCandidateName(candidate);
 
@@ -480,12 +502,22 @@ function confirmCandidate(report, config, candidate) {
     if (config.kind === "subcontractor") addProcessingLog("Информация", `SUBCONTRACTOR_SELECTED: «${report[config.parsedField]}» → target_id=${id}`);
     if (config.kind === "object") {
         const child = candidate.entity_kind === "subobject";
+        report.entity_id = candidate.entity_id ?? candidate.current_hierarchy?.entity_id ?? null;
+        report.current_hierarchy = candidate.current_hierarchy ?? null;
         report.subobject_id = child ? candidate.subobject_id : null;
         report.subobject_name = child ? candidate.subobject_name : null;
         report.resolved_subobject = child ? {id: candidate.subobject_id, name: candidate.subobject_name} : null;
         report.object_id = child ? candidate.object_id : id;
         report.resolved_object = child ? {id: candidate.object_id, name: candidate.object_name} : {id, name};
         report.object_match_source = child ? "subobject_selected" : "selected";
+        if (report.entity_id) {
+            const h = report.current_hierarchy || {};
+            report.object_id = null;
+            report.subobject_id = null;
+            report.resolved_object = {id: null, name: h.parent?.name || h.name || name};
+            report.resolved_subobject = h.parent_entity_id != null ? {id: null, name: h.name || name} : null;
+            report.subobject_name = report.resolved_subobject?.name ?? null;
+        }
         report.assignments_verified = false;
         if (child) addProcessingLog("Информация", `SUBOBJECT_SELECTED: «${report.object_name}» → subobject_id=${report.subobject_id} → object_id=${report.object_id}`);
     }
@@ -513,6 +545,11 @@ async function confirmAndRemember(report, config, candidate, remember) {
         source_value: sourceValue,
         target_id: targetId,
     };
+    if(config.kind==='object' && candidate.entity_id && candidate.current_hierarchy){
+        const h=candidate.current_hierarchy;
+        payload.entity_type=h.legacy_subobject_id!=null?'subobject':'object';
+        payload.target_id=h.legacy_subobject_id??h.legacy_object_id;
+    }
     report.alias_conflicts ||= {};
     report.alias_pending ||= {};
     report.alias_messages ||= {};
@@ -620,6 +657,8 @@ async function addNewDatabaseItem(report, config, button, message) {
         report[config.resolvedField] = {id, name, added: true};
         if (config.kind === "subcontractor") addProcessingLog("Информация", `SUBCONTRACTOR_CREATED: «${name}» → target_id=${id}`);
         if (config.kind === "object") {
+            report.entity_id = result.object?.entity_id ?? result.item?.entity_id ?? null;
+            report.current_hierarchy = result.object?.current_hierarchy ?? result.item?.current_hierarchy ?? null;
             report.subobject_id = null;
             report.subobject_name = null;
             report.resolved_subobject = null;
@@ -690,8 +729,8 @@ function buildSubobjectEditor(report, config) {
             const selected = parent.value;
             parent.replaceChildren(new Option("Выберите родительский объект", ""));
             const query = search.value.toLocaleLowerCase("ru");
-            for (const item of objects.filter(item => item.name.toLocaleLowerCase("ru").includes(query))) {
-                parent.add(new Option(item.name, String(item.id)));
+            for (const item of ConstructionChoices.parents(objects).filter(item => item.name.toLocaleLowerCase("ru").includes(query))) {
+                parent.add(new Option(item.name, ConstructionChoices.value(item)));
             }
             parent.value = [...parent.options].some(option => option.value === selected) ? selected : "";
         };
@@ -709,10 +748,11 @@ function buildSubobjectEditor(report, config) {
             save.disabled = true;
             cancel.disabled = true;
             try {
-                const result = await apiPost("/api/subobjects", {object_id: Number(parent.value), name: name.value});
+                const result = await apiPost("/api/subobjects", {...ConstructionChoices.reference(parent.value, true), name: name.value});
                 const item = result.item;
                 addProcessingLog("Информация", `SUBOBJECT_CREATED: «${item.name}» → subobject_id=${item.id} → object_id=${item.object_id}`);
                 confirmCandidate(report, config, {entity_kind: "subobject", subobject: item,
+                    entity_id: item.entity_id, current_hierarchy: item.current_hierarchy,
                     subobject_id: item.id, subobject_name: item.name, object_id: item.object_id, object_name: item.object_name});
             } catch (error) {
                 message.textContent = `Не удалось сохранить подобъект: ${error.message}`;
@@ -766,6 +806,11 @@ function buildCheckRow(report, config) {
     value.style.marginTop = "6px";
     value.textContent = resolved?.match_source === "alias" ? `Из отчёта: ${parsedValue || "—"}` : parsedValue || "—";
     row.append(value);
+    if(report.review_options?.enabled && reviewAbsenceControls(report,config,row))return row;
+    if(report.review_options?.enabled && status!=='found'){
+        const problem=document.createElement('small');problem.className='review-field-error';
+        problem.textContent=`${config.label}: требуется сопоставление`;row.append(problem);
+    }
     const aliasKey = config.statusField.replace(/_status$/, "");
     if (report.alias_messages?.[aliasKey]) {
         const message = document.createElement("small");
@@ -943,6 +988,7 @@ function buildCheckRow(report, config) {
 
 async function getReportAssignmentPoEntries(report) {
     const entries = [];
+    if(report.review_options?.enabled && reviewApproved(report,'general_contractor')) return [{id:null,name:'Без ПО (согласовано)',role:'ПО'}];
 
     if (report.general_contractor && report.general_contractor_id) {
         entries.push({
@@ -976,10 +1022,11 @@ function flattenAssignmentCategories(items) {
 }
 
 async function renderReportAssignment(report, container) {
+    if(report.review_options?.enabled) return renderReviewCategory(report,container);
     report.assignments_verified = false;
     updateExportButtons();
     // Keep the resolved assignment together with the report, keyed by PO.
-    const assignmentKey = `${report.employee_id}:${report.object_id}:${report.general_contractor_id}`;
+    const assignmentKey = `${report.employee_id}:${report.entity_id ? `entity:${report.entity_id}` : report.object_id}:${report.general_contractor_id}`;
     if (report.assignment_key !== assignmentKey) {
         report.assignment_key = assignmentKey;
         report.assignments = {};
@@ -1002,7 +1049,7 @@ async function renderReportAssignment(report, container) {
         return;
     }
 
-    if (!report.employee_id || !report.object_id) {
+    if (!report.employee_id || !(report.entity_id || report.object_id)) {
         const note = document.createElement("small");
         note.textContent = "Не удалось определить Инженера или Объект.";
         section.append(note);
@@ -1059,7 +1106,7 @@ async function renderReportAssignment(report, container) {
             block.append(summary);
 
             const matches = assignments.filter(item =>
-                Number(item.object_id) === objectId &&
+                (report.entity_id ? Number(item.entity_id) === Number(report.entity_id) : Number(item.object_id) === objectId) &&
                 Number(item.po_id) === Number(po.id)
             );
 
@@ -1172,13 +1219,14 @@ async function renderReportAssignment(report, container) {
 
                     try {
                         const result = await apiPost(`/api/employees/${report.employee_id}/assignments`, {
-                            object_id: Number(report.object_id),
+                            ...(report.entity_id ? {entity_id: Number(report.entity_id)} : {object_id: Number(report.object_id)}),
                             po_id: Number(po.id),
                             category_id: categoryId,
                         });
                         report.assignments[po.id] = {
                             id: result.item.id,
                             employee_id: Number(report.employee_id),
+                            entity_id: report.entity_id ?? null,
                             object_id: Number(report.object_id),
                             po_id: Number(po.id),
                             category_id: categoryId,
@@ -1216,12 +1264,31 @@ async function renderReportAssignment(report, container) {
 
 
 function openDetails(report) {
+    activeReportIndex = window.processingReports.indexOf(report);
+    const footer = detailsPanel.querySelector('.details-footer');
+    if (footer) {
+        footer.querySelectorAll('[data-review-direction]').forEach(button => button.remove());
+        for (const [direction, label] of [[-1, 'Назад'], [1, 'Далее']]) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'secondary-button';
+            button.dataset.reviewDirection = direction;
+            button.textContent = label;
+            const reports = window.processingReports;
+            let next = activeReportIndex + direction;
+            while (next >= 0 && next < reports.length &&
+                (reports[next].control_saved || (getFinalReportStatus(reports[next]) === 'verified' && reports[next].assignments_verified && reports[next].assignments?.[reports[next].general_contractor_id]?.category_id))) next += direction;
+            button.disabled = Boolean(window.matrixActiveReport) || next < 0 || next >= reports.length || Boolean(report.control_saving);
+            button.addEventListener('click', () => openDetails(reports[next]));
+            footer.prepend(button);
+        }
+    }
     clearTimeout(closeDetailsTimer);
     setDetailsValue("detailsFile", report.filename);
     setDetailsValue("detailsEmployee", report.resolved_employee?.name || report.full_name);
     setDetailsValue("detailsPosition", report.position);
     setDetailsValue("detailsDate", report.report_date);
-    setDetailsValue("detailsObject", report.resolved_subobject?.name || report.resolved_object?.name || report.object_name);
+    setDetailsValue("detailsObject", [report.resolved_object?.name || report.object_name, report.resolved_subobject?.name].filter(Boolean).join(' → '));
     setDetailsValue("detailsGeneralContractor", report.resolved_general_contractor?.name || report.general_contractor);
     setDetailsValue("detailsSubcontractor", report.resolved_subcontractor?.name || report.subcontractor);
 
@@ -1230,6 +1297,7 @@ function openDetails(report) {
     const databaseStatus = document.getElementById("databaseStatus");
     databaseStatus.className = "database-status";
     databaseStatus.replaceChildren();
+    if(report.review_options?.enabled){paintReportReviewSummary(report,databaseStatus);renderReviewRules(databaseStatus);}
     const dateRow = document.createElement("div");
     dateRow.textContent = `Дата: ${report.report_date || "—"}`;
     databaseStatus.append(dateRow);
@@ -1408,9 +1476,33 @@ const objectDirectoryNameInput = document.getElementById("objectDirectoryNameInp
 const objectDirectoryModalError = document.getElementById("objectDirectoryModalError");
 let objectItems = [];
 let objectEditId = null;
+let selectedObjectId = null;
 
 let objectSubobjects = [];
 const expandedObjects = new Set();
+const testObjectWorkspace = document.getElementById("objectsPage")?.dataset.identityPreviewEnabled === "true";
+let objectView = "all";
+const constructionIdentityPreview = testObjectWorkspace
+    ? createConstructionIdentityPreview({
+        getKnownEntities: () => [...objectItems, ...objectSubobjects],
+        enablePromote: true,
+        enableStandalone: true,
+        onSaved: async item => {
+            await loadObjects();
+            const parent = objectItems.find(value => Number(value.entity_id ?? value.current_hierarchy?.entity_id) === Number(item.parent_entity_id));
+            if (parent) expandedObjects.add(parent.id ?? `entity:${parent.entity_id}`);
+            objectView = 'all';
+            for (const tab of document.querySelectorAll('[data-object-view]')) {
+                const selected = tab.dataset.objectView === 'all';
+                tab.classList.toggle('active', selected);
+                tab.setAttribute('aria-selected', String(selected));
+            }
+            const status = document.getElementById('objectStatusFilter');
+            if (status) status.value = 'all';
+            renderObjectList();
+        },
+    })
+    : null;
 const subobjectDirectoryEditor = createSubobjectDirectoryEditor({
     getObjects: () => objectItems,
     onSaved: async (child, oldParent) => {
@@ -1426,34 +1518,77 @@ async function loadObjects() {
     if (responses.some(response => !response.ok)) throw new Error("Не удалось загрузить объекты и подобъекты");
     objectItems = results[0].items || results[0].objects || [];
     objectSubobjects = results[1].items || [];
+    if (testObjectWorkspace && expandedObjects.size === 0) {
+        const rootsWithChildren = objectCatalogRows(objectItems, objectSubobjects, {view: "all"});
+        const firstExpanded = rootsWithChildren.find(row => row.children.length);
+        if (firstExpanded) expandedObjects.add(firstExpanded.item.id);
+    }
     renderObjectList();
 }
 
 function renderObjectList() {
     if (!objectList) return;
-    const activity = document.getElementById("objectActivityFilter").value;
-    const rows = objectHierarchyRows(objectItems, objectSubobjects, {
+    const activity = testObjectWorkspace
+        ? document.getElementById("objectStatusFilter").value
+        : document.getElementById("objectActivityFilter").value;
+    const archive = testObjectWorkspace ? "all" : document.getElementById("objectArchiveFilter").value;
+    const sort = document.getElementById("objectSort").value;
+    const children=objectSubobjects.filter(s=>archive==="all"||(s.is_archived||s.parent_is_archived)===(archive==="archived"));
+    const parents=objectItems.filter(o=>archive==="all"||o.is_archived===(archive==="archived")||(archive==="archived"&&children.some(s=>s.object_id===o.id)));
+    if (testObjectWorkspace) {
+        const rows = objectCatalogRows(objectItems, objectSubobjects, {
+            view: objectView, activity, query: objectSearchInput?.value || "", sort,
+        });
+        const itemCount = rows.reduce((count, row) => count + 1 + row.children.length, 0);
+        if (objectCount) objectCount.textContent = `Записей: ${itemCount}`;
+        renderObjectHierarchy(objectList, rows, {
+            expanded: expandedObjects, activity: "all", testMode: true, parents: objectItems,
+            selectedId: selectedObjectId,
+            onSelect: id => { selectedObjectId = id; renderObjectList(); },
+            onAdd: item => subobjectDirectoryEditor.open(item),
+            onEdit: child => subobjectDirectoryEditor.open(null, child),
+            onPromote: item => constructionIdentityPreview.open("promote", item),
+            onMakeStandalone: item => constructionIdentityPreview.open("standalone", item),
+        });
+        return;
+    }
+    const rows = objectHierarchyRows(parents, children, {
         query: objectSearchInput?.value || "",
-        sort: document.getElementById("objectSort").value,
+        sort,
         presence: document.getElementById("objectChildrenFilter").value,
         activity,
     });
     if (objectCount) objectCount.textContent = `Показано: ${rows.length} из ${objectItems.length}`;
-    renderObjectHierarchy(objectList, rows, {
+    renderObjectWorkspace(objectList, rows, {
         expanded: expandedObjects, activity,
         onAdd: item => subobjectDirectoryEditor.open(item),
         onEdit: child => subobjectDirectoryEditor.open(null, child),
+        onPromote: constructionIdentityPreview ? item => constructionIdentityPreview.open("promote", item) : null,
+        onMakeStandalone: constructionIdentityPreview ? item => constructionIdentityPreview.open("standalone", item) : null,
     });
 }
-for (const id of ["objectSort", "objectChildrenFilter", "objectActivityFilter"]) {
+for (const id of ["objectSort", "objectChildrenFilter", "objectActivityFilter", "objectArchiveFilter", "objectStatusFilter"]) {
     document.getElementById(id)?.addEventListener("change", renderObjectList);
+}
+for (const tab of document.querySelectorAll("[data-object-view]")) {
+    tab.addEventListener("click", () => {
+        objectView = tab.dataset.objectView;
+        for (const item of document.querySelectorAll("[data-object-view]")) {
+            const selected = item === tab;
+            item.classList.toggle("active", selected);
+            item.setAttribute("aria-selected", String(selected));
+        }
+        renderObjectList();
+    });
 }
 
 function openObjectDirectoryModal(item = null) {
-    objectEditId = item?.id || null;
+    objectEditId = item?.entity_id != null ? `entity:${item.entity_id}` : item?.id || null;
     objectDirectoryModalTitle.textContent = item ? "Редактирование объекта" : "Добавить объект";
     objectDirectoryModalSave.textContent = item ? "Сохранить" : "Добавить";
     objectDirectoryNameInput.value = item?.name || "";
+    const codeInput = document.getElementById("objectDirectoryCodeInput");
+    if (codeInput) codeInput.value = item?.code ?? item?.object_code ?? item?.code_value ?? item?.construction_code ?? "";
     objectDirectoryModalError.hidden = true;
     objectDirectoryModalError.textContent = "";
     objectDirectoryModal.hidden = false;
@@ -1476,8 +1611,32 @@ objectDirectoryModal?.addEventListener("click", event => {
 objectList?.addEventListener("click", async event => {
     const editButton = event.target.closest(".edit-object-directory");
     if (editButton) {
-        const item = objectItems.find(value => String(value.id) === editButton.dataset.id);
+        const item = objectItems.find(value => (editButton.dataset.id.startsWith("entity:") ? `entity:${value.entity_id}` : String(value.id)) === editButton.dataset.id);
         if (item) openObjectDirectoryModal(item);
+        return;
+    }
+
+    const archiveButton = event.target.closest(".archive-object-directory");
+    const archiveChildButton = event.target.closest(".archive-subobject-directory");
+    if (archiveButton || archiveChildButton) {
+        const isChild = Boolean(archiveChildButton);
+        const button = archiveButton || archiveChildButton;
+        const item = (isChild ? objectSubobjects : objectItems)
+            .find(value => (button.dataset.id.startsWith("entity:") ? `entity:${value.entity_id}` : String(value.id)) === button.dataset.id);
+        if (!item) return;
+        const archived = Boolean(item.is_archived);
+        const action = archived ? "restore" : "archive";
+        if (!archived && !confirm(`Переместить «${item.name}» в архив? История и связи сохранятся.`)) return;
+        try {
+            const kind = isChild ? "subobjects" : "objects";
+            const response = await fetch(item.entity_id != null ? `/api/${kind}/${item.entity_id}/${action}?id_type=entity` : `/api/${kind}/${item.id}/${action}`, {method: "POST"});
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message || "Не удалось изменить архивный статус");
+            await loadObjects();
+            if (typeof employeeItems !== "undefined" && employeeItems.length) await loadEmployees();
+        } catch (error) {
+            alert(error.message);
+        }
         return;
     }
 
@@ -1485,8 +1644,7 @@ objectList?.addEventListener("click", async event => {
     if (!deleteButton) return;
     const item = objectItems.find(value => String(value.id) === deleteButton.dataset.id);
     if (!item) return;
-
-    if (!confirm(`Удалить объект «${item.name}»?`)) return;
+    if (!confirm(`Переместить объект «${item.name}» в архив? История и связи сохранятся.`)) return;
 
     try {
         const response = await fetch(`/api/objects/${item.id}`, {method: "DELETE"});
@@ -1511,7 +1669,7 @@ objectDirectoryModalSave?.addEventListener("click", async () => {
     objectDirectoryModalError.hidden = true;
     try {
         const response = await fetch(
-            objectEditId ? `/api/objects/${objectEditId}` : "/api/objects",
+            objectEditId ? (String(objectEditId).startsWith("entity:") ? `/api/objects/${String(objectEditId).slice(7)}?id_type=entity` : `/api/objects/${objectEditId}`) : "/api/objects",
             {
                 method: objectEditId ? "PATCH" : "POST",
                 headers: {"Content-Type": "application/json"},
@@ -1725,6 +1883,9 @@ function renderPoList() {
             </div>`;
         row.querySelector(".category-number").textContent = index + 1;
         row.querySelector("strong").textContent = item.name;
+        const categoryNote=document.createElement('small');categoryNote.style.display='block';
+        categoryNote.textContent='Категория по умолчанию: '+(item.default_category_name||'не задана');
+        row.querySelector('.category-name').append(categoryNote);
         row.querySelector(".edit-po").dataset.id = item.id;
         row.querySelector(".delete-po").dataset.id = item.id;
         poList.append(row);
@@ -1732,7 +1893,7 @@ function renderPoList() {
 }
 
 
-function openPoModal(item = null) {
+async function openPoModal(item = null) {
     poEditId = item?.id || null;
     poModalTitle.textContent = item ? "Переименовать ПО" : "Добавить ПО";
     poModalSave.textContent = item ? "Сохранить" : "Добавить";
@@ -1740,6 +1901,16 @@ function openPoModal(item = null) {
     poModalError.hidden = true;
     poModalError.textContent = "";
     poModal.hidden = false;
+    const category=document.getElementById('poDefaultCategory');
+    category.replaceChildren(new Option('Не задана',''));category.disabled=true;poModalSave.disabled=true;
+    try{
+        const response=await fetch('/api/object-categories');const data=await response.json();
+        if(!response.ok)throw Error(data.message||'Не удалось загрузить категории');
+        for(const c of flattenAssignmentCategories(data.items))category.add(new Option(c.label,c.id));
+        category.value=item?.default_category_id?String(item.default_category_id):'';
+        category.disabled=false;poModalSave.disabled=false;
+    }catch(error){poModalError.textContent=error.message;poModalError.hidden=false;}
+
     setTimeout(() => poNameInput.focus(), 0);
 }
 
@@ -1775,7 +1946,7 @@ poModal?.addEventListener("click", event => {
 poList?.addEventListener("click", async event => {
     const editButton = event.target.closest(".edit-po");
     if (editButton) {
-        const item = poItems.find(value => String(value.id) === editButton.dataset.id);
+        const item = poItems.find(value => (editButton.dataset.id.startsWith("entity:") ? `entity:${value.entity_id}` : String(value.id)) === editButton.dataset.id);
         if (item) openPoModal(item);
         return;
     }
@@ -1812,7 +1983,7 @@ poModalSave?.addEventListener("click", async () => {
         const response = await fetch(url, {
             method: poEditId ? "PATCH" : "POST",
             headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({name}),
+            body: JSON.stringify({name,default_category_id:document.getElementById('poDefaultCategory').value?Number(document.getElementById('poDefaultCategory').value):null}),
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.message || "Не удалось сохранить ПО");
@@ -1830,16 +2001,18 @@ poModalSave?.addEventListener("click", async () => {
 loadPoTypes().catch(() => {});
 
 // ===== Employees / positions =====
-const employeesNavButton=document.getElementById("employeesNavButton"),employeesPage=document.getElementById("employeesPage"),backFromEmployeesButton=document.getElementById("backFromEmployeesButton"),employeesTab=document.getElementById("employeesTab"),positionsTab=document.getElementById("positionsTab"),employeesPanel=document.getElementById("employeesPanel"),positionsPanel=document.getElementById("positionsPanel"),positionList=document.getElementById("positionList"),addPositionButton=document.getElementById("addPositionButton"),positionModal=document.getElementById("positionModal"),positionModalTitle=document.getElementById("positionModalTitle"),positionModalClose=document.getElementById("positionModalClose"),positionModalCancel=document.getElementById("positionModalCancel"),positionModalSave=document.getElementById("positionModalSave"),positionNameInput=document.getElementById("positionNameInput"),positionDescriptionInput=document.getElementById("positionDescriptionInput"),positionModalError=document.getElementById("positionModalError");
+const positionEquipmentInput=document.getElementById("positionEquipmentInput");
+const positionPlannedCountInput=document.getElementById("positionPlannedCountInput");
+const employeesNavButton=document.getElementById("employeesNavButton"),employeesPage=document.getElementById("employeesPage"),backFromEmployeesButton=document.getElementById("backFromEmployeesButton"),employeesTab=document.getElementById("employeesTab"),positionsTab=document.getElementById("positionsTab"),employeesPanel=document.getElementById("employeesPanel"),positionsPanel=document.getElementById("positionsPanel"),positionList=document.getElementById("positionList"),addPositionButton=document.getElementById("addPositionButton"),positionModal=document.getElementById("positionModal"),positionModalTitle=document.getElementById("positionModalTitle"),positionModalClose=document.getElementById("positionModalClose"),positionModalCancel=document.getElementById("positionModalCancel"),positionModalSave=document.getElementById("positionModalSave"),positionNameInput=document.getElementById("positionNameInput"),positionDescriptionInput=document.getElementById("positionDescriptionInput"),positionReportDescriptionInput=document.getElementById("positionReportDescriptionInput"),positionRequiresDailyReportInput=document.getElementById("positionRequiresDailyReportInput"),positionAosDescriptionInput=document.getElementById("positionAosDescriptionInput"),positionModalError=document.getElementById("positionModalError");
 let positionItems=[],positionEditId=null;
 document.getElementById("positionWorkLocation").addEventListener("change",()=>syncPositionSchedule());
 function showMainSection(section, nav) {
     closeDetails();
-    ["processingPage", "objectsPage", "employeesPage", "crewsPage", "contractorsPage", "logsPage", "journalPage", "railTicketsPage", "luvrCalendarPage", "luvrMonthPage"].forEach(id => {
+    ["processingPage", "objectsPage", "employeesPage", "crewsPage", "contractorsPage", "logsPage", "journalPage", "railTicketsPage", "luvrCalendarPage", "luvrMonthPage", "productionMatrixPage", "deploymentPage"].forEach(id => {
         const page = document.getElementById(id);
         if (page) page.hidden = page !== section;
     });
-    const luvrTabs={railTicketsPage:'railTicketsNavButton',luvrMonthPage:'luvrMonthNavButton',luvrCalendarPage:'luvrCalendarNavButton'};
+    const luvrTabs={productionMatrixPage:'productionMatrixNavButton',railTicketsPage:'railTicketsNavButton',luvrMonthPage:'luvrMonthNavButton',luvrCalendarPage:'luvrCalendarNavButton'};
     const luvrTab=luvrTabs[section?.id];
     const luvrNavigation=document.getElementById('luvrNavigation');
     if(luvrNavigation){
@@ -1870,8 +2043,37 @@ document.getElementById("backFromLogsButton")?.addEventListener("click", () => {
 });
 function activateEmployeeTab(tab){[employeesTab,positionsTab].forEach(b=>b?.classList.remove("active"));tab?.classList.add("active");employeesPanel.hidden=tab!==employeesTab;positionsPanel.hidden=tab!==positionsTab}
 async function loadPositions(){const r=await fetch("/api/positions"),x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось загрузить должности");positionItems=x.items||[];renderPositionList()}
-function renderPositionList(){positionList.replaceChildren();if(!positionItems.length){positionList.innerHTML='<div class="category-empty">Должности не найдены</div>';return}const header=document.createElement("div");header.className="position-table-header";header.innerHTML="<strong>Должность</strong><strong>Описание действий</strong><strong>Действия</strong>";positionList.append(header);positionItems.forEach(item=>{const row=document.createElement("div");row.className="position-table-row";row.innerHTML='<div class="position-title"></div><div class="position-description"></div><div class="category-actions"><button type="button" class="category-icon-button edit-position" title="Редактировать">✎</button><button type="button" class="category-icon-button danger delete-position" title="Удалить">🗑</button></div>';row.querySelector(".position-title").textContent=item.name;const labels=positionWorkLabels(item);const settings=document.createElement("small");settings.className="position-work-settings";settings.textContent=`${labels.specialty} ? ${labels.location} ? ${labels.schedule}`;row.querySelector(".position-title").append(settings);const d=row.querySelector(".position-description");d.textContent=item.action_description||"Описание действий не заполнено";if(!item.action_description)d.classList.add("empty-description");row.querySelector(".edit-position").dataset.id=item.id;row.querySelector(".delete-position").dataset.id=item.id;positionList.append(row)})}
-function openPositionModal(item=null){positionEditId=item?.id||null;positionModalTitle.textContent=item?"Редактировать должность":"Добавить должность";positionModalSave.textContent=item?"Сохранить":"Добавить";positionNameInput.value=item?.name||"";positionDescriptionInput.value=item?.action_description||"";fillPositionSettings(item);positionModalError.hidden=true;positionModal.hidden=false;setTimeout(()=>positionNameInput.focus(),0)}
+function renderPlannedCount(container,item){
+    container.replaceChildren();
+    const button=document.createElement('button');button.type='button';button.className='position-count-button';
+    button.textContent=String(item.planned_count??0);button.title='Изменить плановое количество';
+    button.setAttribute('aria-label',`Плановое количество: ${button.textContent}. Изменить`);
+    button.onclick=()=>{
+        const input=document.createElement('input');input.type='number';input.min='0';input.max='2147483647';input.step='1';input.required=true;input.value=item.planned_count??0;input.setAttribute('aria-label','Плановое количество');
+        const save=document.createElement('button');save.type='button';save.textContent='✓';save.title='Сохранить';save.setAttribute('aria-label','Сохранить плановое количество');
+        const cancel=document.createElement('button');cancel.type='button';cancel.textContent='×';cancel.title='Отмена';cancel.setAttribute('aria-label','Отменить изменение');
+        const error=document.createElement('small');error.setAttribute('role','alert');error.hidden=true;
+        let busy=false;
+        cancel.onclick=()=>{if(!busy)renderPlannedCount(container,item);};
+        save.onclick=async()=>{
+            if(busy||!input.reportValidity())return;
+            const count=Number(input.value);if(count===item.planned_count){renderPlannedCount(container,item);return;}
+            busy=true;input.disabled=save.disabled=cancel.disabled=true;error.hidden=true;
+            try{
+                const r=await fetch(`/api/positions/${item.id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({name:item.name,action_description:item.action_description,planned_count:count})});
+                const result=await r.json();if(!r.ok)throw new Error(result.message||'Не удалось сохранить количество');
+                Object.assign(item,result.item);renderPlannedCount(container,item);
+            }catch(e){error.textContent=e.message;error.hidden=false;}
+            finally{busy=false;input.disabled=save.disabled=cancel.disabled=false;}
+        };
+        input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();save.click();}if(e.key==='Escape'){e.preventDefault();cancel.click();}};
+        container.replaceChildren(input,save,cancel,error);input.focus();input.select();
+    };
+    container.append(button);
+}
+function renderPositionList(){positionList.replaceChildren();if(!positionItems.length){positionList.innerHTML='<div class="category-empty">Должности не найдены</div>';return}const header=document.createElement("div");header.className="position-table-header";header.innerHTML="<strong>Должность</strong><strong>Заполнение описаний</strong><strong>Действия</strong>";const plannedHeader=document.createElement("strong");plannedHeader.textContent="Плановое количество";header.insertBefore(plannedHeader,header.lastElementChild);positionList.append(header);positionItems.forEach(item=>{const row=document.createElement("div");row.className="position-table-row";row.innerHTML='<div class="position-title"></div><div class="position-description position-description-status"></div><div class="category-actions"><button type="button" class="category-icon-button edit-position" title="Редактировать">✎</button><button type="button" class="category-icon-button danger delete-position" title="Удалить">🗑</button></div>';row.querySelector(".position-title").textContent=item.name;const labels=positionWorkLabels(item);const settings=document.createElement("small");settings.className="position-work-settings";settings.textContent=`${labels.specialty} · ${labels.location} · ${labels.schedule}`;row.querySelector(".position-title").append(settings);const d=row.querySelector(".position-description");for(const [label,value] of [["Действия",item.action_description],["Отчёт",item.report_description],["АОС",item.aos_description]]){const badge=document.createElement("span");badge.className=`position-fill-badge ${value?"filled":"empty"}`;badge.textContent=`${label}: ${value?"✓":"—"}`;d.append(badge)}const planned=document.createElement("div");planned.className="position-planned-count";renderPlannedCount(planned,item);row.insertBefore(planned,row.querySelector(".category-actions"));row.querySelector(".edit-position").dataset.id=item.id;row.querySelector(".delete-position").dataset.id=item.id;positionList.append(row)})}
+function openPositionModal(item=null){positionEditId=item?.id||null;positionModalTitle.textContent=item?"Редактировать должность":"Добавить должность";positionModalSave.textContent=item?"Сохранить":"Добавить";positionNameInput.value=item?.name||"";positionDescriptionInput.value=item?.action_description||"";positionReportDescriptionInput.value=item?.report_description||"";positionEquipmentInput.value=item?.equipment_description||"";positionAosDescriptionInput.value=item?.aos_description||"";positionRequiresDailyReportInput.value=item?.requires_daily_report?"true":"false";positionPlannedCountInput.value=item?.planned_count??0;fillPositionSettings(item);positionModalError.hidden=true;positionModal.hidden=false;setTimeout(()=>positionNameInput.focus(),0)}
 function closePositionModal(){positionModal.hidden=true}
 employeesNavButton?.addEventListener("click",()=>{closeDetails();showMainSection(employeesPage,employeesNavButton);activateEmployeeTab(employeesTab)});
 backFromEmployeesButton?.addEventListener("click",()=>showMainSection(processingPage,document.querySelector(".nav-item:first-child")));
@@ -1880,7 +2082,7 @@ positionsTab?.addEventListener("click",async()=>{activateEmployeeTab(positionsTa
 addPositionButton?.addEventListener("click",()=>openPositionModal());
 positionModalClose?.addEventListener("click",closePositionModal);positionModalCancel?.addEventListener("click",closePositionModal);positionModal?.addEventListener("click",e=>{if(e.target===positionModal)closePositionModal()});
 positionList?.addEventListener("click",async e=>{const eb=e.target.closest(".edit-position");if(eb){const item=positionItems.find(x=>String(x.id)===eb.dataset.id);if(item)openPositionModal(item);return}const db=e.target.closest(".delete-position");if(!db)return;const item=positionItems.find(x=>String(x.id)===db.dataset.id);if(!item||!confirm(`Удалить должность «${item.name}»?`))return;try{const r=await fetch(`/api/positions/${item.id}`,{method:"DELETE"}),x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось удалить должность");await loadPositions()}catch(err){alert(err.message)}});
-positionModalSave?.addEventListener("click",async()=>{const name=positionNameInput.value.trim();if(!name){positionModalError.textContent="Введите название должности";positionModalError.hidden=false;return}positionModalSave.disabled=true;positionModalError.hidden=true;try{const url=positionEditId?`/api/positions/${positionEditId}`:"/api/positions",r=await fetch(url,{method:positionEditId?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,action_description:positionDescriptionInput.value.trim()||null,...positionSettingsPayload()})}),x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось сохранить должность");closePositionModal();await loadPositions()}catch(err){positionModalError.textContent=err.message;positionModalError.hidden=false}finally{positionModalSave.disabled=false}});
+positionModalSave?.addEventListener("click",async()=>{const name=positionNameInput.value.trim();if(!positionPlannedCountInput.reportValidity())return;if(!name){positionModalError.textContent="Введите название должности";positionModalError.hidden=false;return}positionModalSave.disabled=true;positionModalError.hidden=true;try{const url=positionEditId?`/api/positions/${positionEditId}`:"/api/positions",r=await fetch(url,{method:positionEditId?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name,action_description:positionDescriptionInput.value.trim()||null,report_description:positionReportDescriptionInput.value.trim()||null,aos_description:positionAosDescriptionInput.value.trim()||null,equipment_description:positionEquipmentInput.value,planned_count:Number(positionPlannedCountInput.value),requires_daily_report:positionRequiresDailyReportInput.value==="true",...positionSettingsPayload()})}),x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось сохранить должность");closePositionModal();await loadPositions()}catch(err){positionModalError.textContent=err.message;positionModalError.hidden=false}finally{positionModalSave.disabled=false}});
 
 
 // ===== Employees CRUD =====
@@ -1921,7 +2123,7 @@ let employeeListRequest=0;
 
 async function loadEmployees(){
     const version=++employeeListRequest;
-    const response=await fetch(employeeArchiveListUrl(employeeArchiveFilter?.value==="archived"));
+    const response=await fetch(employeeArchiveFilter?.value==="all"?"/api/employees?include_archived=true":employeeArchiveListUrl(employeeArchiveFilter?.value==="archived"));
     const result=await response.json();
     if(version!==employeeListRequest)return;
     if(!response.ok) throw new Error(result.message||"Не удалось загрузить сотрудников");
@@ -1935,30 +2137,7 @@ async function loadCrews(){
     crewItems=result.items||[];
 }
 function renderEmployees(){
-    if(!employeeList)return;
-    employeeList.replaceChildren();
-    const q=(employeeSearchInput?.value||"").trim().toLocaleLowerCase("ru");
-    const items=employeeItems.filter(item=>!q||[item.full_name,item.position_name,item.phone,item.crew_name].some(v=>(v||"").toLocaleLowerCase("ru").includes(q)));
-    if(employeeCount)employeeCount.textContent=`Показано: ${items.length} из ${employeeItems.length}`;
-    if(!items.length){employeeList.innerHTML='<div class="category-empty">Сотрудники не найдены</div>';return}
-    const header=document.createElement("div");
-    header.className="employee-table-header";
-    const archived=employeeArchiveFilter?.value==="archived";
-    header.innerHTML=archived?"<strong>ФИО</strong><strong>Должность</strong><strong>Дата увольнения</strong><strong>Дата архивирования</strong><strong>Объектов</strong><strong>Действия</strong>":"<strong>ФИО</strong><strong>Должность</strong><strong>Телефон</strong><strong>Экипаж</strong><strong>Объектов</strong><strong>Действия</strong>";
-    employeeList.append(header);
-    items.forEach(item=>{
-        const row=document.createElement("div");
-        row.className="employee-table-row";
-        row.innerHTML='<div class="employee-name"></div><div class="employee-position"></div><div class="employee-phone"></div><div class="employee-crew"></div><div class="employee-objects-count"></div><div class="category-actions"><button type="button" class="category-icon-button edit-employee" title="Редактировать">✎</button><button type="button" class="employee-archive-button"></button></div>';
-        row.querySelector(".employee-name").textContent=item.full_name||"—";
-        const p=row.querySelector(".employee-position"); p.textContent=item.position_name||"—"; if(item.action_description)p.title=item.action_description;
-        row.querySelector(".employee-phone").textContent=archived?employeeArchiveDate(item.dismissal_date):item.phone||"—";
-        const crew=crewItems.find(x=>x.id===item.crew_id); row.querySelector(".employee-crew").textContent=archived?employeeArchiveDate(item.archived_at):crew?.driver_full_name||item.crew_name||"—";
-        row.querySelector(".employee-objects-count").textContent=Number(item.objects_count)||0;
-        row.querySelector(".edit-employee").dataset.id=item.id;
-        const archiveButton=row.querySelector(".employee-archive-button");archiveButton.dataset.id=item.id;archiveButton.textContent=item.is_archived?"Восстановить":"В архив";
-        employeeList.append(row);
-    });
+    if(typeof renderEmployeeWorkspace==='function')renderEmployeeWorkspace(employeeItems);
 }
 function fillEmployeeSelects(){
     employeePositionSelect.innerHTML='<option value="">Не выбрана</option>';
@@ -1982,22 +2161,27 @@ function updateEmployeeCrewPreview(){
 }
 async function loadEmployeeAssignments(employeeId){const r=await fetch(`/api/employees/${employeeId}/assignments`),x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось загрузить назначения");employeeAssignments=x.items||[];employeeObjectsCount.textContent=`Объектов: ${x.objects_count||0}`;renderEmployeeAssignments()}
 function renderEmployeeAssignments(){employeeAssignmentsList.replaceChildren();if(!employeeAssignments.length){employeeAssignmentsList.innerHTML='<div class="assignment-empty">Назначений пока нет</div>';return}employeeAssignments.forEach(item=>{const row=document.createElement("div");row.className="assignment-row";row.innerHTML='<div class="assignment-main"><strong class="assignment-object"></strong><span class="assignment-po"></span><span class="assignment-category"></span></div><div class="category-actions"><button type="button" class="category-icon-button edit-assignment">✎</button><button type="button" class="category-icon-button danger delete-assignment">🗑</button></div>';row.querySelector(".assignment-object").textContent=item.object_name||"—";row.querySelector(".assignment-po").textContent=`ПО: ${item.po_name||"—"}`;row.querySelector(".assignment-category").textContent=`Категория: ${item.category_name||"—"}`;row.querySelector(".edit-assignment").dataset.id=item.id;row.querySelector(".delete-assignment").dataset.id=item.id;employeeAssignmentsList.append(row)})}
-async function loadAssignmentDictionaries(){const [a,b,c]=await Promise.all([fetch("/api/objects"),fetch("/api/po-types"),fetch("/api/object-categories")]);const [ax,bx,cx]=await Promise.all([a.json(),b.json(),c.json()]);if(!a.ok)throw new Error(ax.message||"Не удалось загрузить объекты");if(!b.ok)throw new Error(bx.message||"Не удалось загрузить ПО");if(!c.ok)throw new Error(cx.message||"Не удалось загрузить категории");assignmentObjectSelect.innerHTML='<option value="">Выберите объект</option>';(ax.items||ax.objects||[]).forEach(x=>assignmentObjectSelect.add(new Option(x.name,x.id)));assignmentPoSelect.innerHTML='<option value="">Выберите ПО</option>';(bx.items||[]).forEach(x=>assignmentPoSelect.add(new Option(x.name,x.id)));assignmentCategorySelect.innerHTML='<option value="">Выберите категорию</option>';(cx.items||[]).forEach(x=>assignmentCategorySelect.add(new Option(x.name,x.id)))}
-async function openAssignmentEditor(item=null){try{await loadAssignmentDictionaries();assignmentEditId=item?.id||null;assignmentObjectSelect.value=item?String(item.object_id):"";assignmentPoSelect.value=item?String(item.po_id):"";assignmentCategorySelect.value=item?String(item.category_id):"";assignmentSaveButton.textContent=item?"Сохранить":"Добавить";assignmentError.hidden=true;assignmentEditor.hidden=false}catch(e){alert(e.message)}}
+let assignmentObjectChoices = [];
+async function loadAssignmentDictionaries(){const [a,b,c]=await Promise.all([fetch("/api/objects?archive=active"),fetch("/api/po-types"),fetch("/api/object-categories")]);const [ax,bx,cx]=await Promise.all([a.json(),b.json(),c.json()]);if(!a.ok)throw new Error(ax.message||"Не удалось загрузить объекты");if(!b.ok)throw new Error(bx.message||"Не удалось загрузить ПО");if(!c.ok)throw new Error(cx.message||"Не удалось загрузить категории");assignmentObjectChoices=await ConstructionChoices.load(async url=>{const r=await fetch(url);if(!r.ok)throw new Error(String(r.status));return r.json();},ax.items||ax.objects||[]);ConstructionChoices.fill(assignmentObjectSelect,assignmentObjectChoices);assignmentPoSelect.innerHTML='<option value="">Выберите ПО</option>';(bx.items||[]).forEach(x=>assignmentPoSelect.add(new Option(x.name,x.id)));assignmentCategorySelect.innerHTML='<option value="">Выберите категорию</option>';(cx.items||[]).forEach(x=>assignmentCategorySelect.add(new Option(x.name,x.id)))}
+async function openAssignmentEditor(item=null){try{await loadAssignmentDictionaries();ConstructionChoices.fill(assignmentObjectSelect,assignmentObjectChoices,item);assignmentEditId=item?.id||null;assignmentPoSelect.value=item?String(item.po_id):"";assignmentCategorySelect.value=item?String(item.category_id):"";assignmentSaveButton.textContent=item?"Сохранить":"Добавить";assignmentError.hidden=true;assignmentEditor.hidden=false}catch(e){alert(e.message)}}
 function closeAssignmentEditor(){assignmentEditor.hidden=true;assignmentEditId=null}
 
-async function openEmployeeModal(item=null){
+let employeeModalContext=null;
+async function openEmployeeModal(item=null,context=null){
+    employeeModalContext=context;
+    document.getElementById('employeeTicketMatches')?.remove();
     employeeEditId=item?.id||null;
-    employeeModalTitle.textContent=item?"Редактирование сотрудника":"Добавить сотрудника";
+    employeeModalTitle.textContent=item?"Карточка сотрудника":"Добавить сотрудника";
     employeeModalSave.textContent=item?"Сохранить":"Добавить";
     employeeModalError.hidden=true;employeeModalError.textContent="";
     try{
         await loadPositions();
         if(!crewItems.length)await loadCrews();
         fillEmployeeSelects();
-        employeeNameInput.value=item?.full_name||"";
+        employeeNameInput.value=item?.full_name||context?.full_name||"";
         employeePositionSelect.value=item?.position_id==null?"":String(item.position_id);
         employeePhoneInput.value=item?.phone||"";
+        document.getElementById("employeeEmailInput").value=item?.email||"";
         fillEmployeePersonalSettings(item);
         document.getElementById("employeeDismissalDate").value=item?.dismissal_date||"";
         openEmployeeLuvrHistory(item?.id||null);
@@ -2007,7 +2191,7 @@ async function openEmployeeModal(item=null){
         employeeModal.hidden=false;setTimeout(()=>employeeNameInput.focus(),0);
     }catch(error){alert(error.message)}
 }
-function closeEmployeeModal(){employeeModal.hidden=true}
+function closeEmployeeModal(){employeeModal.hidden=true;employeeModalContext=null}
 employeeSearchInput?.addEventListener("input",renderEmployees);
 employeeArchiveFilter?.addEventListener("change",()=>loadEmployees().catch(error=>alert(error.message)));
 employeePositionSelect?.addEventListener("change",updateEmployeeDescription);
@@ -2031,9 +2215,10 @@ employeeList?.addEventListener("click",async e=>{
 addAssignmentButton?.addEventListener("click",()=>openAssignmentEditor());
 assignmentCancelButton?.addEventListener("click",closeAssignmentEditor);
 employeeAssignmentsList?.addEventListener("click",async e=>{const edit=e.target.closest(".edit-assignment"),del=e.target.closest(".delete-assignment");if(edit){const item=employeeAssignments.find(x=>x.id===Number(edit.dataset.id));if(item)await openAssignmentEditor(item);return}if(del){const item=employeeAssignments.find(x=>x.id===Number(del.dataset.id));if(!item||!confirm(`Удалить назначение на объект «${item.object_name}»?`))return;try{const r=await fetch(`/api/employees/${employeeEditId}/assignments/${item.id}`,{method:"DELETE"}),x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось удалить назначение");await loadEmployeeAssignments(employeeEditId)}catch(err){alert(err.message)}}});
-assignmentSaveButton?.addEventListener("click",async()=>{if(!employeeEditId)return;const object_id=Number(assignmentObjectSelect.value),po_id=Number(assignmentPoSelect.value),category_id=Number(assignmentCategorySelect.value);if(!object_id||!po_id||!category_id){assignmentError.textContent="Выберите объект, ПО и категорию";assignmentError.hidden=false;return}assignmentSaveButton.disabled=true;assignmentError.hidden=true;try{const url=assignmentEditId?`/api/employees/${employeeEditId}/assignments/${assignmentEditId}`:`/api/employees/${employeeEditId}/assignments`;const r=await fetch(url,{method:assignmentEditId?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({object_id,po_id,category_id})}),x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось сохранить назначение");closeAssignmentEditor();await loadEmployeeAssignments(employeeEditId)}catch(err){assignmentError.textContent=err.message;assignmentError.hidden=false}finally{assignmentSaveButton.disabled=false}});
+assignmentSaveButton?.addEventListener("click",async()=>{if(!employeeEditId)return;const objectReference=ConstructionChoices.reference(assignmentObjectSelect.value),po_id=Number(assignmentPoSelect.value),category_id=Number(assignmentCategorySelect.value);if(!assignmentObjectSelect.value||!po_id||!category_id){assignmentError.textContent="Выберите объект, ПО и категорию";assignmentError.hidden=false;return}assignmentSaveButton.disabled=true;assignmentError.hidden=true;try{const url=assignmentEditId?`/api/employees/${employeeEditId}/assignments/${assignmentEditId}`:`/api/employees/${employeeEditId}/assignments`;const r=await fetch(url,{method:assignmentEditId?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...objectReference,po_id,category_id})}),x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось сохранить назначение");closeAssignmentEditor();await loadEmployeeAssignments(employeeEditId)}catch(err){assignmentError.textContent=err.message;assignmentError.hidden=false}finally{assignmentSaveButton.disabled=false}});
 
 employeeModalSave?.addEventListener("click",async()=>{
+    if(!document.getElementById("employeeEmailInput").reportValidity())return;
     const full_name=employeeNameInput.value.trim();
     if(!full_name){employeeModalError.textContent="Введите ФИО сотрудника";employeeModalError.hidden=false;return}
     employeeModalSave.disabled=true;employeeModalError.hidden=true;
@@ -2044,14 +2229,16 @@ employeeModalSave?.addEventListener("click",async()=>{
             dismissal_date:document.getElementById("employeeDismissalDate").value||null,
             position_id:employeePositionSelect.value?Number(employeePositionSelect.value):null,
             phone:employeePhoneInput.value.trim()||null,
+            email:document.getElementById("employeeEmailInput").value.trim()||null,
             crew_id:employeeCrewSelect.value?Number(employeeCrewSelect.value):null
         };
-        const r=await fetch(employeeEditId?`/api/employees/${employeeEditId}`:"/api/employees",{
-            method:employeeEditId?"PATCH":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)
-        });
-        const x=await r.json();if(!r.ok)throw new Error(x.message||"Не удалось сохранить сотрудника");
-        closeEmployeeModal();document.dispatchEvent(new CustomEvent("employee-saved",{detail:{id:x.id}}));await loadEmployees();
-    }catch(error){employeeModalError.textContent=error.message;employeeModalError.hidden=false}
+        const context=employeeModalContext;
+        if(context?.beforeSave)await context.beforeSave(body);
+        const x=await saveEmployeeData(employeeEditId,body);
+        closeEmployeeModal();document.dispatchEvent(new CustomEvent("employee-saved",{detail:{id:x.id}}));
+        if(context?.onSaved)await context.onSaved(x);
+        await loadEmployees();
+    }catch(error){employeeModalError.textContent=error.message;employeeModalError.hidden=false;if(employeeModalContext?.onError)await employeeModalContext.onError();}
     finally{employeeModalSave.disabled=false}
 });
 
@@ -2086,33 +2273,14 @@ async function refreshCrews(){
 }
 function renderCrews(){
     if(!crewList)return;
-    crewList.replaceChildren();
     const q=(crewSearchInput?.value||"").trim().toLocaleLowerCase("ru");
     const items=crewItems.filter(item=>!q||[
-        item.driver_full_name,item.driver_phone,item.vehicle_make,item.vehicle_plate
+        item.name,item.driver_full_name,item.driver_phone,item.vehicle_make,item.vehicle_plate
     ].some(v=>(v||"").toLocaleLowerCase("ru").includes(q)));
     if(crewCount)crewCount.textContent=`Показано: ${items.length} из ${crewItems.length}`;
-    if(!items.length){
-        crewList.innerHTML='<div class="category-empty">Экипажи не найдены</div>';
-        return;
-    }
-    const header=document.createElement("div");
-    header.className="crew-table-header";
-    header.innerHTML="<strong>Водитель</strong><strong>Телефон</strong><strong>Автомобиль</strong><strong>Гос. номер</strong><strong>Действия</strong>";
-    crewList.append(header);
-    items.forEach(item=>{
-        const row=document.createElement("div");
-        row.className="crew-table-row";
-        row.innerHTML='<div class="crew-driver"></div><div class="crew-phone"></div><div class="crew-vehicle"></div><div class="crew-plate"></div><div class="category-actions"><button type="button" class="category-icon-button edit-crew" title="Редактировать">✎</button><button type="button" class="category-icon-button danger delete-crew" title="Удалить">🗑</button></div>';
-        row.querySelector(".crew-driver").textContent=item.driver_full_name||"—";
-        row.querySelector(".crew-phone").textContent=item.driver_phone||"—";
-        row.querySelector(".crew-vehicle").textContent=item.vehicle_make||"—";
-        row.querySelector(".crew-plate").textContent=item.vehicle_plate||"—";
-        row.querySelector(".edit-crew").dataset.id=item.id;
-        row.querySelector(".delete-crew").dataset.id=item.id;
-        crewList.append(row);
-    });
+    renderCrewWorkspace(crewList,items);
 }
+
 function openCrewModal(item=null){
     crewEditId=item?.id||null;
     crewModalTitle.textContent=item?"Редактирование экипажа":"Добавить экипаж";

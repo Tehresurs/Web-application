@@ -1,0 +1,55 @@
+﻿const assert=require('node:assert/strict');
+const fs=require('node:fs');
+(async()=>{
+ const page=await(await fetch('http://127.0.0.1:9234/json/new?about:blank',{method:'PUT'})).json();
+ const ws=new WebSocket(page.webSocketDebuggerUrl);await new Promise(r=>ws.addEventListener('open',r,{once:true}));
+ let id=0;const pending=new Map(),errors=[],checks=[];
+ const call=(method,params={})=>new Promise((resolve,reject)=>{pending.set(++id,{resolve,reject});ws.send(JSON.stringify({id,method,params}));});
+ ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id){const p=pending.get(m.id);pending.delete(m.id);m.error?p.reject(m.error):p.resolve(m.result);}if(m.method==='Runtime.exceptionThrown')errors.push(m.params.exceptionDetails);};
+ const ev=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true,userGesture:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
+ const wait=async expression=>{for(let n=0;n<300;n++){if(await ev(expression))return;await new Promise(r=>setTimeout(r,100));}throw Error('Timeout '+expression+'\n'+await ev('document.body.innerText.slice(-5000)'));};
+ const open=async n=>{await ev(`document.querySelector('[data-report-index="${n}"]').click()`);await wait(`activeReportIndex===${n} && detailsPanel.classList.contains('open')`);};
+ const approve=async(label,text)=>{
+   await ev(`Array.from(document.querySelectorAll('#databaseStatus > div')).find(r=>r.querySelector('strong')?.textContent===${JSON.stringify(label)}).querySelectorAll('button') && Array.from(Array.from(document.querySelectorAll('#databaseStatus > div')).find(r=>r.querySelector('strong')?.textContent===${JSON.stringify(label)}).querySelectorAll('button')).find(b=>b.textContent===${JSON.stringify(text)}).click()`);
+ };
+ const parse=async()=>{await ev(`folderPath.value='C:/Projects/report-review-browser';folderPath.dispatchEvent(new Event('input'));folderPath.dispatchEvent(new Event('change'))`);await wait('!parseButton.disabled');await ev('parseButton.click()');await wait('window.processingReports.length===3 && window.processingReports.every(r=>r.review_options) && !parseButton.disabled');};
+ try {
+  await call('Runtime.enable');await call('Page.enable');await call('Page.navigate',{url:'http://127.0.0.1:8001/'});
+  await wait('document.readyState==="complete" && typeof openDetails==="function"');await parse();
+  assert.match(await ev('resultTable.innerText'),/Нет категории/);assert.equal(await ev('document.getElementById("saveResultButton").disabled'),true);checks.push('blocking remarks, category and counters');
+  await open(0);await approve('ПО','Согласовать отсутствие');await wait('processingReports[0].review_options.fields.general_contractor.manual');
+  assert.equal(await ev('processingReports[1].review_options.fields.general_contractor.approved'),false);
+  await approve('Субподрядчик','Принять как правило');await wait('processingReports.every(r=>r.review_options.fields.subcontractor.approved)');checks.push('independent manual approval and persistent rule');
+  await ev('document.querySelector("[data-review-direction=\"1\"]").click()');await wait('activeReportIndex===1');
+  await ev('document.querySelector("[data-review-direction=\"-1\"]").click()');await wait('activeReportIndex===0');
+  assert.equal(await ev('processingReports[0].review_options.fields.general_contractor.manual'),true);checks.push('next/back preserves decisions');
+  await wait('document.querySelector("[aria-label=\"Категория отчёта\"]")');
+  await ev(`window.catSelect=document.querySelector('[aria-label="Категория отчёта"]');catSelect.selectedIndex=1;catSelect.dispatchEvent(new Event('change'));Array.from(document.querySelectorAll('.review-category button')).find(b=>b.textContent==='Сохранить категорию').click()`);
+  await wait('processingReports[0].assignments?.null?.category_id');const first=await ev('processingReports[0].assignments.null.id');
+  await ev(`catSelect.selectedIndex=2;catSelect.dispatchEvent(new Event('change'));document.querySelector('.review-category button').click()`);await wait('document.querySelector(".review-category p").textContent.startsWith("Категория сохранена") && !document.querySelector(".review-category button").disabled');
+  assert.equal(await ev('processingReports[0].assignments.null.id'),first);checks.push('category create/update keeps assignment ID');
+  await open(1);await approve('ПО','Принять как правило');await wait('processingReports[1].review_options.fields.general_contractor.rule');
+  assert.equal(await ev('processingReports[2].review_options.fields.general_contractor.approved'),false);checks.push('filled PO remains untouched');
+  await wait('processingReports[1].assignments?.null?.category_id');
+  await wait('Array.from(document.querySelectorAll(".review-rules p")).some(p=>p.textContent.startsWith("ПО:")&&p.querySelector("button"))');
+  await ev(`Array.from(document.querySelectorAll('.review-rules p')).find(p=>p.textContent.startsWith('ПО:')).querySelector('button').click()`);
+  await wait('!processingReports[1].review_options.fields.general_contractor.approved');assert.equal(await ev('processingReports[0].review_options.fields.general_contractor.approved'),true);checks.push('rule cancellation keeps manual approval');
+  await approve('ПО','Согласовать отсутствие');await wait('processingReports[1].review_options.fields.general_contractor.manual');
+  await open(2);await wait('document.querySelector("[aria-label=\"Категория отчёта\"]")');
+  await ev(`const s=document.querySelector('[aria-label="Категория отчёта"]');s.selectedIndex=1;s.dispatchEvent(new Event('change'));document.querySelector('.review-category button').click()`);
+  await wait('processingReports[2].assignments?.[processingReports[2].general_contractor_id]?.category_id');
+  await ev('detailsClose.click();document.getElementById("checkSaveResultButton").click()');
+  await wait('!reportSaver.checking');
+  assert.equal(await ev('document.getElementById("saveResultButton").disabled'),false,await ev('document.getElementById("saveResultMessage").textContent'));
+  await ev('document.getElementById("saveResultButton").click()');await wait('!reportSaver.saving && processingReports.every(r=>r.control_saved)');checks.push('browser saves agreed NULL PO and filled PO reports');
+  await call('Page.reload');await wait('document.readyState==="complete"&&typeof openDetails==="function"');await parse();
+  assert.equal(await ev('processingReports[0].review_options.fields.general_contractor.manual'),true);
+  assert.equal(await ev('processingReports[2].review_options.fields.subcontractor.rule'),true);checks.push('approvals and rules survive reload');
+  await open(0);await wait('document.querySelector(".review-rules p button")');
+  await ev(`Array.from(document.querySelectorAll('.review-rules p')).find(p=>p.textContent.startsWith('Субподрядчик:')).querySelector('button').click()`);
+  await wait('!processingReports[0].review_options.fields.subcontractor.rule');
+  const shot=await call('Page.captureScreenshot',{format:'png'});fs.writeFileSync('C:/Projects/report-review-browser/review.png',Buffer.from(shot.data,'base64'));
+  assert.equal(errors.length,0,JSON.stringify(errors));
+  fs.writeFileSync('C:/Projects/report-review-browser/result.json',JSON.stringify({checks,errors},null,2));console.log(JSON.stringify({passed:checks.length,checks,errors}));
+ }finally{ws.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});

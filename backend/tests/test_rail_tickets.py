@@ -36,6 +36,8 @@ class RailTicketTests(unittest.TestCase):
         test_luvr_history.LuvrHistoryTests.setUp(self)
         apply_migration(self.conn)
         page_migration(self.conn)
+        for name in ("015_rail_ticket_management.sql", "016_rail_ticket_restore.sql"):
+            self.conn.execute((Path(__file__).resolve().parents[1]/"app/database/migrations"/name).read_text(encoding="utf-8"))
         self.conn.execute("UPDATE employees SET full_name='Иванов Иван Иванович' WHERE id=2")
         @contextmanager
         def connection():
@@ -50,6 +52,60 @@ class RailTicketTests(unittest.TestCase):
         return http_request('PATCH' if op=='direction' else 'POST',f'/api/rail-tickets/{item["id"]}/{op}',payload or {})
 
     def count_movements(self):return self.conn.execute('SELECT count(*) FROM employee_movements').fetchone()[0]
+
+    def test_manual_selection_resolves_ambiguous_name_and_is_idempotent(self):
+        self.conn.execute('UPDATE employees SET full_name=(SELECT full_name FROM employees WHERE id=2) WHERE id=1')
+        ticket=self.upload()
+        self.assertTrue(ticket['match_ambiguous'])
+        self.assertEqual(self.action(ticket,'confirm')[0],409)
+        before=self.count_movements()
+        status,result=self.action(ticket,'confirm',{'employee_id':1})
+        self.assertEqual(status,200,result)
+        self.assertEqual(result['item']['employee_id'],1)
+        self.assertEqual(self.count_movements(),before+1)
+        self.assertEqual(self.action(ticket,'confirm',{'employee_id':1})[0],200)
+        self.assertEqual(self.upload()['id'],ticket['id'])
+        self.assertEqual(self.count_movements(),before+1)
+        movement=result['item']['movement_id']
+        self.assertEqual(self.action(ticket,'annul')[0],200)
+        status,result=self.action(ticket,'restore')
+        self.assertEqual(status,200,result)
+        self.assertEqual(result['item']['employee_id'],1)
+        self.assertEqual(result['item']['movement_id'],movement)
+
+    def test_manual_selection_for_similar_name_preserves_ticket_passenger(self):
+        ticket=self.upload(coupon_pdf(full_name='ИВАНОВ ИВАН ПЕТРОВИЧ'))
+        self.assertEqual(ticket['processing_status'],'EMPLOYEE_NOT_FOUND')
+        before=self.count_movements()
+        self.assertEqual(self.action(ticket,'confirm')[0],409)
+        self.assertEqual(self.count_movements(),before)
+        status,result=self.action(ticket,'confirm',{'employee_id':2})
+        self.assertEqual(status,200,result)
+        self.assertEqual(result['item']['full_name'],ticket['full_name'])
+        self.assertEqual(result['item']['employee_id'],2)
+
+    def test_manual_selection_checks_exact_match_missing_and_archived(self):
+        ticket=self.upload()
+        self.assertEqual(self.action(ticket,'confirm',{'employee_id':1})[0],409)
+        unknown=self.upload(coupon_pdf(full_name='НОВЫЙ ИВАН ПЕТРОВИЧ'))
+        self.assertEqual(self.action(unknown,'confirm',{'employee_id':999999})[0],404)
+        self.assertEqual(self.action(unknown,'confirm',{'employee_id':0})[0],422)
+        self.conn.execute('UPDATE employees SET is_archived=true WHERE id=1')
+        self.assertEqual(self.action(unknown,'confirm',{'employee_id':1})[0],409)
+
+    def test_card_confirmation_requires_linked_confirmed_ticket(self):
+        ticket=self.upload()
+        confirmed=self.action(ticket,'confirm')[1]['item']
+        employee_id=confirmed['employee_id']
+        items=http_request('GET',f'/api/employees/{employee_id}/luvr/movements')[1]['items']
+        linked=next(x for x in items if x['id']==confirmed['movement_id'])
+        self.assertEqual(linked['confirmed_ticket_id'],ticket['id'])
+        status, data=http_request('POST',f'/api/employees/{employee_id}/luvr/movements',{
+            'movement_type':'DEPARTURE','transport_type':'RAIL',
+            'event_datetime':'2026-12-01T12:00:00','source_file':'unverified.pdf'})
+        self.assertEqual(status,200,data)
+        items=http_request('GET',f'/api/employees/{employee_id}/luvr/movements')[1]['items']
+        self.assertIsNone(next(x for x in items if x['id']==data['item']['id'])['confirmed_ticket_id'])
 
     def test_real_round_trip_two_records_two_confirmations_and_duplicate_upload(self):
         data=(Path(__file__).parent/'fixtures/rail/round_trip.pdf').read_bytes()
@@ -79,6 +135,8 @@ class RailTicketTests(unittest.TestCase):
         ticket=self.upload();self.action(ticket,'confirm')
         before=self.conn.execute('SELECT to_jsonb(t) FROM rail_tickets t ORDER BY id').fetchall()
         page_migration(self.conn)
+        for name in ("015_rail_ticket_management.sql", "016_rail_ticket_restore.sql"):
+            self.conn.execute((Path(__file__).resolve().parents[1]/"app/database/migrations"/name).read_text(encoding="utf-8"))
         self.assertEqual(before,self.conn.execute('SELECT to_jsonb(t) FROM rail_tickets t ORDER BY id').fetchall())
 
     def test_upload_auto_direction_never_creates_movement_without_confirmation(self):

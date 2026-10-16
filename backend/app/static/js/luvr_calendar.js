@@ -33,6 +33,14 @@ class LuvrCalendarController{
     }
 }
 
+function luvrColorDay(cell,day,code=day.final_code){
+    cell.classList.add('luvr-colored-day');
+    cell.dataset.luvrCode=code;
+    if(day.is_sick)cell.classList.add('luvr-color-sick');
+    if(day.calculation_status==='NEEDS_REVIEW')cell.classList.add('luvr-color-review');
+    if(day.manually_changed)cell.classList.add('luvr-color-manual');
+}
+
 function initLuvrCalendar(){
     const page=document.getElementById('luvrCalendarPage');if(!page)return;
     const employee=document.getElementById('luvrCalendarEmployee'),month=document.getElementById('luvrCalendarMonth');
@@ -40,7 +48,7 @@ function initLuvrCalendar(){
     const error=document.getElementById('luvrCalendarError'),editor=document.getElementById('luvrCalendarEditor');
     const refresh=document.getElementById('luvrCalendarRefresh');let editing=null;
     const controller=new LuvrCalendarController(luvrHistoryRequest,render,message=>{error.textContent=message;error.hidden=false;});
-    document.addEventListener('luvr-rail-deleted',event=>{
+    for(const eventName of ['luvr-rail-deleted','luvr-ticket-state-changed'])document.addEventListener(eventName,event=>{
         if(controller.selection?.employee!==event.detail.employee_id)return;
         editing=null;editor.hidden=true;controller.epoch++;controller.busy=false;controller.data=null;
         controller.render(controller);controller.load();
@@ -82,7 +90,7 @@ function initLuvrCalendar(){
             const row=document.createElement('tr');row.dataset.date=day.date;
             if(day.manually_changed)row.classList.add('luvr-day-manual');
             const cell=text=>{const td=document.createElement('td');td.textContent=text;row.append(td);return td;};
-            cell(day.date.split('-').reverse().join('.'));cell(day.auto_display);cell(day.final_display);
+            cell(day.date.split('-').reverse().join('.'));luvrColorDay(cell(day.auto_display),day,day.auto_code);luvrColorDay(cell(day.final_display),day);
             cell(day.manually_changed?'Да':'Нет');
             const detail=cell('');
             const label=document.createElement('div');label.textContent=day.calculation_status==='NEEDS_REVIEW'?'Требует проверки':LUVR_SOURCES[day.final_source_type]||'';detail.append(label);

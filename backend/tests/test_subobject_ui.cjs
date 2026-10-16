@@ -17,7 +17,7 @@ class Element {
 }
 function setup() {
     const calls=[];
-    const context={console,window:{alert(){}}, document:{createElement:tag=>new Element(tag),createTextNode:text=>({textContent:text})},activeReportIndex:0,
+    const context={console,ConstructionChoices:require('../app/static/js/construction_choices.js'),window:{alert(){}}, document:{createElement:tag=>new Element(tag),createTextNode:text=>({textContent:text})},activeReportIndex:0,
         Option:function(text,value){this.textContent=text;this.value=value;},
         getFinalReportStatus:()=> 'verified',renderReports(){},openDetails(){},addProcessingLog(){},
         fetch:async()=>({ok:true,json:async()=>({items:[{id:5,name:'Родитель №55'},{id:6,name:'Другой'}]})})};
@@ -91,6 +91,31 @@ test('save payload sends child or explicit null while assignments stay on parent
         general_contractor_status:'found',general_contractor_id:3,assignments:{3:{id:9}}});
     assert.equal(payload.object_id,5); assert.equal(payload.subobject_id,12); assert.equal(payload.assignments[3],9);
     assert.equal(ReportSaveController.prototype.payload({}).subobject_id,null);
+});
+
+test('Word parent dropdown excludes children and archive and posts the promoted parent identity',async()=>{
+    const {context,calls}=setup();
+    context.fetch=async()=>({ok:true,json:async()=>({items:[
+        {id:null,entity_id:20,name:'Самостоятельный',current_hierarchy:{entity_id:20,parent_entity_id:null}},
+        {id:8,entity_id:21,name:'Дочерний',current_hierarchy:{entity_id:21,parent_entity_id:20}},
+        {id:9,entity_id:22,name:'Архивный',is_archived:true,current_hierarchy:{entity_id:22,parent_entity_id:null}},
+    ]})});
+    context.apiPost=async(url,payload)=>{
+        calls.push({url,payload});return {item:{id:30,entity_id:23,object_id:null,name:payload.name,
+            current_hierarchy:{entity_id:23,name:payload.name,parent_entity_id:20,parent:{name:'Самостоятельный'}}}};
+    };
+    const report={object_name:'Новый',problems:[]};
+    const editor=context.buildSubobjectEditor(report,config);
+    await editor.children[0].handlers.click();
+    const form=editor.children[1],parent=form.children[3].children[0];
+    assert.deepEqual(parent.options.map(o=>o.value),['','entity:20']);
+    parent.value='entity:20';await form.handlers.submit({preventDefault(){}});
+    assert.equal(calls[0].payload.parent_entity_id,20);
+    assert.equal(calls[0].payload.object_id,undefined);
+    assert.equal(report.entity_id,23);
+    assert.equal(report.object_id,null);
+    assert.equal(report.resolved_object.name,'Самостоятельный');
+    assert.equal(report.resolved_subobject.name,'Новый');
 });
 
 function descendants(node) { return [node,...(node.children || []).flatMap(descendants)]; }

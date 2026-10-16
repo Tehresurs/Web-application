@@ -1,0 +1,50 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{spawn}=require('node:child_process');
+(async()=>{
+ const watchdog=setTimeout(()=>{console.error('Clean-start assignment scenario did not finish');process.exit(1);},60000);
+ const base=process.argv[2],url=new URL(base);assert.equal(url.hostname,'127.0.0.1');assert.ok(!['8000','8001'].includes(url.port));
+ const chrome=['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'].find(fs.existsSync);assert.ok(chrome);
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'clean-assignments-browser-'));
+ const proc=spawn(chrome,['--headless=new','--disable-gpu','--no-first-run','--no-default-browser-check','--remote-debugging-port=0',`--user-data-dir=${dir}`,'about:blank'],{windowsHide:true,stdio:['ignore','ignore','pipe']});
+ let chromeLog='',ws;proc.stderr.on('data',b=>{chromeLog+=b.toString();});
+ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+ try{
+  for(let i=0;i<100&&!fs.existsSync(path.join(dir,'DevToolsActivePort'));i++)await sleep(100);
+  const port=fs.readFileSync(path.join(dir,'DevToolsActivePort'),'utf8').split('\n')[0];
+  let page;
+  for(let i=0;i<50;i++){try{page=await(await fetch(`http://127.0.0.1:${port}/json/new?about:blank`,{method:'PUT'})).json();break;}catch(e){if(i===49)throw e;await sleep(200);}}
+  ws=new WebSocket(page.webSocketDebuggerUrl);await new Promise(r=>ws.addEventListener('open',r,{once:true}));
+  let id=0;const pending=new Map(),errors=[];
+  ws.addEventListener('close',()=>{for(const p of pending.values())p.reject(Error('Chrome connection closed: '+chromeLog));pending.clear();});
+  const call=(method,params={})=>new Promise((resolve,reject)=>{pending.set(++id,{resolve,reject});ws.send(JSON.stringify({id,method,params}));});
+  ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id){const p=pending.get(m.id);pending.delete(m.id);m.error?p.reject(m.error):p.resolve(m.result);}if(m.method==='Runtime.exceptionThrown')errors.push(m.params);if(m.method==='Page.javascriptDialogOpening'){if(m.params.type==='alert')errors.push(m.params.message);call('Page.handleJavaScriptDialog',{accept:true});}};
+  const ev=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true,userGesture:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
+  const wait=async expression=>{for(let i=0;i<100;i++){if(await ev(expression))return;await sleep(100);}throw Error('Timeout '+expression+' errors='+JSON.stringify(errors));};
+  await call('Page.enable');await call('Runtime.enable');await call('Page.navigate',{url:base+'/api/clean-construction-entities/workspace'});
+  await wait("document.querySelector('#cleanAssignmentEmployee option[value]:not([value=\"\"])') && document.querySelector('#cleanAssignmentList .assignment-empty')");
+  const seeded=await ev(`(async()=>{const b='/api/clean-construction-entities',n=Date.now();const root=await(await fetch(b,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Assignment browser root '+n})})).json();const child=await(await fetch(b,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Assignment browser child '+n,parent_entity_id:root.item.entity_id})})).json();return {root:root.item,child:child.item};})()`);
+  assert.ok(seeded.root?.entity_id&&seeded.child?.entity_id);
+  await ev("document.getElementById('cleanAssignmentAdd').click()");
+  await wait("document.querySelectorAll('#cleanAssignmentEntity option[value]:not([value=\"\"])').length>=2 && document.querySelector('#cleanAssignmentPo option[value]:not([value=\"\"])') && document.querySelector('#cleanAssignmentCategory option[value]:not([value=\"\"])')");
+  const refs=await ev("({po:[...document.querySelectorAll('#cleanAssignmentPo option[value]:not([value=\"\"])')].map(x=>x.value),cat:document.querySelector('#cleanAssignmentCategory option[value]:not([value=\"\"])').value,employee:document.getElementById('cleanAssignmentEmployee').value})");
+  assert.ok(refs.employee&&refs.po.length);
+  await ev(`document.getElementById('cleanAssignmentEntity').value=${JSON.stringify(String(seeded.child.entity_id))};document.getElementById('cleanAssignmentPo').value=${JSON.stringify(refs.po[0])};document.getElementById('cleanAssignmentCategory').value=${JSON.stringify(refs.cat)};document.getElementById('cleanAssignmentSave').click()`);
+  await wait("document.querySelectorAll('#cleanAssignmentList .assignment-row').length===1");
+  assert.ok(await ev(`document.querySelector('#cleanAssignmentList .assignment-object').textContent.includes(${JSON.stringify(seeded.child.name)})`));
+  await ev(`(async()=>{const b='/api/clean-construction-entities/${seeded.child.entity_id}';let r=await fetch(b+'/hierarchy',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({version:${seeded.child.version},parent_entity_id:null,confirmed:true})});if(!r.ok)throw Error(await r.text());let c=(await r.json()).item;r=await fetch(b+'/hierarchy',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({version:c.version,parent_entity_id:${seeded.root.entity_id},confirmed:true})});if(!r.ok)throw Error(await r.text());return (await r.json()).item;})()`);
+  await ev("document.getElementById('cleanAssignmentEmployee').dispatchEvent(new Event('change'))");
+  await wait(`document.querySelector('#cleanAssignmentList .assignment-object')?.textContent.includes(${JSON.stringify(seeded.root.name+' → '+seeded.child.name)})`);
+  await ev("document.querySelector('#cleanAssignmentList .clean-assignment-edit').click()");
+  await wait("!document.getElementById('cleanAssignmentEditor').hidden");
+  await wait("document.querySelectorAll('#cleanAssignmentPo option[value]:not([value=\"\"])').length>=2");
+  const poOptions=await ev("([...document.querySelectorAll('#cleanAssignmentPo option[value]:not([value=\"\"])')].map(x=>({value:x.value,label:x.textContent})))");
+  const otherPo=poOptions[1];
+  assert.ok(otherPo);
+  await ev(`document.getElementById('cleanAssignmentPo').value=${JSON.stringify(otherPo.value)};document.getElementById('cleanAssignmentSave').click()`);
+  await wait(`document.querySelector('#cleanAssignmentList .assignment-po')?.textContent===${JSON.stringify('ПО: '+otherPo.label)} && document.getElementById('cleanAssignmentEditor').hidden`);
+  await ev("document.querySelector('#cleanAssignmentList .clean-assignment-delete').click()");
+  await wait("document.querySelector('#cleanAssignmentList .assignment-empty')");
+  const remaining=await ev(`(async()=> (await(await fetch('/api/clean-construction-entities/employees/${refs.employee}/assignments')).json()).items.length)()`);
+  assert.equal(remaining,0);
+  assert.deepEqual(errors,[]);console.log('Clean-start assignment flow passed');
+ }finally{clearTimeout(watchdog);if(ws)ws.close();proc.kill();await sleep(600);try{fs.rmSync(dir,{recursive:true,force:true});}catch{}}
+})().catch(e=>{console.error(e);process.exitCode=1;});

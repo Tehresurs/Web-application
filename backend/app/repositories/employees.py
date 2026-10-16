@@ -84,7 +84,7 @@ def get_positions():
                 SELECT
                     id,
                     name,
-                    action_description, specialty, work_location, work_schedule
+                    action_description, specialty, work_location, work_schedule, report_description, aos_description, requires_daily_report, planned_count, equipment_description
                 FROM positions
                 ORDER BY name;
                 """
@@ -99,6 +99,8 @@ def get_positions():
             "specialty": row[3],
             "work_location": row[4],
             "work_schedule": row[5],
+            "report_description": row[6] or "",
+            "aos_description": row[7] or "", "requires_daily_report": row[8], "planned_count": row[9], "equipment_description": row[10],
         }
         for row in rows
     ]
@@ -108,6 +110,7 @@ def create_position(
     name: str,
     action_description: str | None = None,
     specialty=None, work_location=None, work_schedule=None,
+    report_description=None, aos_description=None, requires_daily_report=False, planned_count=0, equipment_description=None,
 ):
     _validate_position_settings(work_location, work_schedule)
     clean_name = " ".join(name.split())
@@ -141,15 +144,15 @@ def create_position(
                 """
                 INSERT INTO positions (
                     name,
-                    action_description, specialty, work_location, work_schedule
+                    action_description, specialty, work_location, work_schedule, report_description, aos_description, requires_daily_report, planned_count, equipment_description
                 )
-                VALUES (%s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING
                     id,
                     name,
-                    action_description, specialty, work_location, work_schedule;
+                    action_description, specialty, work_location, work_schedule, report_description, aos_description, requires_daily_report, planned_count, equipment_description;
                 """,
-                (clean_name, clean_description, specialty, work_location, work_schedule),
+                (clean_name, clean_description, specialty, work_location, work_schedule, report_description, aos_description, requires_daily_report, planned_count, equipment_description),
             )
 
             row = cursor.fetchone()
@@ -159,6 +162,7 @@ def create_position(
         "name": row[1],
         "action_description": row[2] or "",
         "specialty": row[3], "work_location": row[4], "work_schedule": row[5],
+        "report_description": row[6] or "", "aos_description": row[7] or "", "requires_daily_report": row[8], "planned_count": row[9], "equipment_description": row[10],
     }
 
 
@@ -167,6 +171,7 @@ def rename_position(
     name: str,
     action_description: str | None = None,
     specialty=_UNSET, work_location=_UNSET, work_schedule=_UNSET,
+    report_description=_UNSET, aos_description=_UNSET, requires_daily_report=_UNSET, planned_count=_UNSET, equipment_description=_UNSET,
 ):
     clean_name = " ".join(name.split())
     clean_description = (
@@ -183,7 +188,7 @@ def rename_position(
 
             cursor.execute(
                 """
-                SELECT specialty, work_location, work_schedule
+                SELECT specialty, work_location, work_schedule, report_description, aos_description, requires_daily_report, planned_count, equipment_description
                 FROM positions
                 WHERE id = %s FOR UPDATE;
                 """,
@@ -197,6 +202,11 @@ def rename_position(
             specialty = previous[0] if specialty is _UNSET else specialty
             work_location = previous[1] if work_location is _UNSET else work_location
             work_schedule = previous[2] if work_schedule is _UNSET else work_schedule
+            report_description = previous[3] if report_description is _UNSET else report_description
+            aos_description = previous[4] if aos_description is _UNSET else aos_description
+            equipment_description = previous[7] if equipment_description is _UNSET else equipment_description
+            planned_count = previous[6] if planned_count is _UNSET else planned_count
+            requires_daily_report = previous[5] if requires_daily_report is _UNSET else requires_daily_report
             _validate_position_settings(work_location, work_schedule)
 
             cursor.execute(
@@ -221,14 +231,15 @@ def rename_position(
                     name = %s,
                     action_description = %s,
                     specialty = %s, work_location = %s, work_schedule = %s,
+                    report_description = %s, aos_description = %s, requires_daily_report = %s, planned_count = %s, equipment_description = %s,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE id = %s
                 RETURNING
                     id,
                     name,
-                    action_description, specialty, work_location, work_schedule;
+                    action_description, specialty, work_location, work_schedule, report_description, aos_description, requires_daily_report, planned_count, equipment_description;
                 """,
-                (clean_name, clean_description, specialty, work_location, work_schedule, position_id),
+                (clean_name, clean_description, specialty, work_location, work_schedule, report_description, aos_description, requires_daily_report, planned_count, equipment_description, position_id),
             )
 
             row = cursor.fetchone()
@@ -238,6 +249,7 @@ def rename_position(
         "name": row[1],
         "action_description": row[2] or "",
         "specialty": row[3], "work_location": row[4], "work_schedule": row[5],
+        "report_description": row[6] or "", "aos_description": row[7] or "", "requires_daily_report": row[8], "planned_count": row[9], "equipment_description": row[10],
     }
 
 
@@ -291,7 +303,7 @@ def get_employees(archived=False):
                     COUNT(DISTINCT ea.object_id) AS objects_count,
                     e.nrs_number, e.max_shift_days, e.max_off_shift_days,
                     p.specialty, p.work_location, p.work_schedule, e.dismissal_date,
-                    e.is_archived, e.archived_at
+                    e.is_archived, e.archived_at, e.email
                 FROM employees e
                 LEFT JOIN positions p
                     ON p.id = e.position_id
@@ -329,7 +341,7 @@ def get_employees(archived=False):
             "specialty": row[12], "work_location": row[13], "work_schedule": row[14],
             "dismissal_date": row[15],
             "is_archived": row[16],
-            "archived_at": row[17],
+            "archived_at": row[17], "email": row[18],
         }
         for row in rows
     ]
@@ -340,7 +352,7 @@ def create_employee(
     position_id: int | None = None,
     phone: str | None = None,
     crew_id: int | None = None,
-    nrs_number=None, max_shift_days=None, max_off_shift_days=None, dismissal_date=None,
+    nrs_number=None, max_shift_days=None, max_off_shift_days=None, dismissal_date=None, email=None,
 ):
     _validate_day_limits(max_shift_days, max_off_shift_days)
     clean_name = " ".join(full_name.split())
@@ -369,16 +381,16 @@ def create_employee(
                     full_name,
                     position_id,
                     phone,
-                    crew_id, nrs_number, max_shift_days, max_off_shift_days, dismissal_date
+                    crew_id, nrs_number, max_shift_days, max_off_shift_days, dismissal_date, email
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id;
                 """,
                 (
                     clean_name,
                     position_id,
                     phone.strip() if phone else None,
-                    crew_id, nrs_number, max_shift_days, max_off_shift_days, dismissal_date,
+                    crew_id, nrs_number, max_shift_days, max_off_shift_days, dismissal_date, email.strip() if email else None,
                 ),
             )
 
@@ -393,7 +405,7 @@ def update_employee(
     position_id: int | None = None,
     phone: str | None = None,
     crew_id: int | None = None,
-    nrs_number=_UNSET, max_shift_days=_UNSET, max_off_shift_days=_UNSET, dismissal_date=_UNSET,
+    nrs_number=_UNSET, max_shift_days=_UNSET, max_off_shift_days=_UNSET, dismissal_date=_UNSET, email=_UNSET,
 ):
     _validate_day_limits(max_shift_days, max_off_shift_days)
     clean_name = " ".join(full_name.split())
@@ -437,6 +449,7 @@ def update_employee(
                     position_id = %s,
                     phone = %s,
                     crew_id = %s,
+                    email = CASE WHEN %s THEN %s ELSE email END,
                     dismissal_date = CASE WHEN %s THEN %s ELSE dismissal_date END,
                     nrs_number = CASE WHEN %s THEN %s ELSE nrs_number END,
                     max_shift_days = CASE WHEN %s THEN %s ELSE max_shift_days END,
@@ -449,6 +462,7 @@ def update_employee(
                     position_id,
                     phone.strip() if phone else None,
                     crew_id,
+                    email is not _UNSET, None if email is _UNSET or not email else email.strip(),
                     dismissal_date is not _UNSET, None if dismissal_date is _UNSET else dismissal_date,
                     nrs_number is not _UNSET, None if nrs_number is _UNSET else nrs_number,
                     max_shift_days is not _UNSET, None if max_shift_days is _UNSET else max_shift_days,

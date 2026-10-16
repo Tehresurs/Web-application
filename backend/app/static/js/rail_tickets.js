@@ -1,118 +1,14 @@
-const RAIL_STATUS_LABELS={EMPLOYEE_NOT_FOUND:'Сотрудник не найден',ARCHIVED_EMPLOYEE:'Сотрудник находится в архиве',NEEDS_DIRECTION:'Выберите направление',READY:'Готов к подтверждению',CONFIRMED:'Событие сохранено',PARSE_ERROR:'Требует проверки',DUPLICATE:'Билет уже обработан',REJECTED:'Билет отклонён'};
-function railEmployeeName(value){
-    return (value||'').trim().split(/\s+/u).filter(Boolean).map(part=>part.charAt(0).toUpperCase()+part.slice(1).toLowerCase()).join(' ');
-}
-RAIL_STATUS_LABELS.UNSUPPORTED='Не является поддерживаемым билетом РЖД';
-RAIL_STATUS_LABELS.NOT_LUVR_ROUTE='Не относится к ЛУВР — маршрут без станции Салым';
-async function railDropFiles(dataTransfer){
-    // Capture entries synchronously while the drop event still owns its data.
-    const entries=Array.from(dataTransfer.items||[]).filter(x=>x.kind==='file').map(x=>x.webkitGetAsEntry?.());
-    if(!entries.length||entries.some(x=>!x))return {files:Array.from(dataTransfer.files),errors:[]};
-    const files=[],errors=[],stack=entries.slice();
-    while(stack.length){
-        const entry=stack.pop();
-        try{
-            if(entry.isFile)files.push(await new Promise((resolve,reject)=>entry.file(resolve,reject)));
-            else if(entry.isDirectory){
-                const reader=entry.createReader();
-                while(true){const batch=await new Promise((resolve,reject)=>reader.readEntries(resolve,reject));if(!batch.length)break;stack.push(...batch);}
-            }
-        }catch(e){errors.push('Не удалось прочитать элемент папки: '+entry.name);}
-    }
-    return {files,errors};
-}
-function railBatchStats(items,fileCount=items.length){
-    const count=fn=>items.filter(fn).length;
-    return {'Найдено файлов':fileCount,'Билетов РЖД (разобрано)':count(x=>['PARSED','CONFIRMED','REJECTED'].includes(x.status)&&!!x.full_name&&!!x.departure_datetime&&!!x.arrival_datetime),
-        'Для ЛУВР (есть Салым)':count(x=>x.is_luvr_route===true),'Без станции Салым':count(x=>x.processing_status==='NOT_LUVR_ROUTE'),
-        'Сотрудник не найден':count(x=>x.processing_status==='EMPLOYEE_NOT_FOUND'),'Требуют проверки':count(x=>['PARSE_ERROR','ARCHIVED_EMPLOYEE','NEEDS_DIRECTION'].includes(x.processing_status)),
-        'Готовы к подтверждению':count(x=>x.processing_status==='READY'),'Дубликаты':count(x=>x.duplicate===true),
-        'Ошибки парсинга':count(x=>x.processing_status==='PARSE_ERROR'),'Посторонние файлы':count(x=>x.processing_status==='UNSUPPORTED')};
-}
-function railDate(value){return value?value.slice(0,10).split('-').reverse().join('.')+' '+value.slice(11,16):'Не найдено';}
-class RailTicketController{
-    constructor(request,render,error){this.request=request;this.render=render;this.error=error;this.items=[];this.batchItems=[];this.pending=new Set();this.uploading=false;this.deletedIds=new Set();}
-    removeDeletedTicket(id){this.deletedIds.add(id);this.items=this.items.filter(t=>t.id!==id);this.batchItems=this.batchItems.filter(t=>t.id!==id);this.render(this);}
-    merge(items){for(const item of items){if(this.deletedIds.has(item.id))continue;const index=item.id?this.items.findIndex(x=>x.id===item.id):-1;if(index<0)this.items.push(item);else this.items[index]=item;}this.render(this);}
-    async upload(files){
-        if(this.uploading)return;
-        const list=Array.from(files);if(!list.length)return;
-        this.uploading=true;this.batchItems=[];this.fileCount=list.length;this.render(this);
-        const batches=[];let batch=[],bytes=0;
-        for(const file of list){const size=Math.min(file.size,10*1024*1024+1);if(batch.length&&(batch.length===50||bytes+size>50*1024*1024)){batches.push(batch);batch=[];bytes=0;}batch.push(file);bytes+=size;}if(batch.length)batches.push(batch);
-        try{for(const files of batches){
-            let items;
-            try{const form=new FormData();for(const file of files)form.append('files',file,file.name);items=(await this.request('/api/rail-tickets/upload',{method:'POST',body:form})).items;}
-            catch(e){this.error(e.message);items=files.map(file=>({source_filename:file.name,processing_status:'PARSE_ERROR',parse_errors:['Не удалось загрузить файл. Повторите загрузку.']}));}
-            this.batchItems.push(...items.filter(t=>!this.deletedIds.has(t.id)));this.merge(items);
-        }}finally{this.uploading=false;this.render(this);}
-    }
-    async action(id,operation,value){
-        if(this.pending.has(id))return;
-        this.pending.add(id);this.render(this);
-        try{
-            const url=`/api/rail-tickets/${id}${operation==='refresh'?'':'/'+operation}`;
-            const options=operation==='refresh'?{}:{method:operation==='direction'?'PATCH':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(operation==='direction'?{movement_type:value}:{})};
-            const item=(await this.request(url,options)).item;
-            this.batchItems=this.batchItems.map(old=>old.id===item.id?{...item,duplicate:old.duplicate}:old);
-            this.merge([item]);
-        }catch(e){this.error(e.message);}
-        finally{this.pending.delete(id);this.render(this);}
-    }
-}
-async function railRequest(url,options={}){
-    const response=await fetch(url,options),body=await response.json().catch(()=>null);
-    if(!response.ok)throw new Error(body?.message||'Не удалось выполнить операцию с билетом');
-    return body;
-}
-function initRailTickets(){
-    const page=document.getElementById('railTicketsPage'),list=document.getElementById('railTicketList'),error=document.getElementById('railTicketError');
-    if(!page)return;
-    const controller=new RailTicketController(railRequest,render,message=>{error.textContent=message;error.hidden=false;});
-    let createTicketId=null;
-    function render(state){
-        list.replaceChildren();document.getElementById('railUploadProgress').hidden=!state.uploading;
-        const summary=document.getElementById('railBatchSummary');summary.textContent=state.batchItems.length?Object.entries(railBatchStats(state.batchItems,state.fileCount)).map(([label,n])=>`${label}: ${n}`).join(' · '):'';
-        document.querySelectorAll('[data-rail-upload]').forEach(button=>button.disabled=state.uploading);
-        for(const item of state.items){
-            const card=document.createElement('article');card.className='rail-ticket-card';if(item.id)card.dataset.ticketId=item.id;
-            const line=(label,value)=>{const p=document.createElement('p');const strong=document.createElement('strong');strong.textContent=label+': ';p.append(strong,document.createTextNode(value||'Не найдено'));card.append(p);};
-            line('Файл',item.source_filename);if(item.source_page)line('Страница',String(item.source_page));line('ФИО из билета',item.full_name);
-            line('Отправление',`${item.departure_station||'Не найдено'} · ${railDate(item.departure_datetime)}`);
-            line('Прибытие',`${item.arrival_station||'Не найдено'} · ${railDate(item.arrival_datetime)}`);
-            if(!['UNSUPPORTED','NOT_LUVR_ROUTE'].includes(item.processing_status))line('Сопоставление',item.match_status==='FOUND'?`НАЙДЕН — ${item.employee_name}`:'Сотрудник не найден');
-            line('Статус',RAIL_STATUS_LABELS[item.processing_status]);
-            if(item.match_ambiguous)line('Проверка','Найдено несколько сотрудников с одинаковым ФИО. Требуется проверка справочника.');
-            for(const message of item.parse_errors||[])line('Проверка',message);
-            if(item.movement)line('Сохранённое событие',`${item.movement.movement_type==='ARRIVAL'?'Заезд':'Выезд'} · ${railDate(item.movement.event_datetime)} · №${item.movement.id}`);
-            const buttons=document.createElement('div');buttons.className='rail-ticket-actions';card.append(buttons);
-            const action=(label,operation,fn)=>{const b=document.createElement('button');b.type='button';b.className='secondary-button';b.textContent=label;b.dataset.action=operation;b.disabled=state.pending.has(item.id);b.onclick=()=>{error.hidden=true;fn();};buttons.append(b);};
-            if(item.movement_type&&!item.movement)line('Направление',item.movement_type==='ARRIVAL'?'Заезд':'Выезд');
-            if(item.processing_status==='READY')action('Подтвердить','confirm',()=>controller.action(item.id,'confirm'));
-            if(item.processing_status==='EMPLOYEE_NOT_FOUND'&&!item.match_ambiguous){
-                action('Создать сотрудника','create-employee',async()=>{createTicketId=item.id;await openEmployeeModal();document.getElementById('employeeNameInput').value=railEmployeeName(item.full_name);});
-            }
-            if(item.processing_status==='ARCHIVED_EMPLOYEE')line('Действие','Восстановление возможно только отдельным действием во вкладке «Сотрудники». После этого нажмите «Проверить сотрудника».');
-            if(['EMPLOYEE_NOT_FOUND','ARCHIVED_EMPLOYEE','NEEDS_DIRECTION','READY'].includes(item.processing_status))action('Проверить сотрудника','refresh',()=>controller.action(item.id,'refresh'));
-            if(item.id&&!['CONFIRMED','DUPLICATE','REJECTED','NOT_LUVR_ROUTE','UNSUPPORTED'].includes(item.processing_status))action('Отклонить','reject',()=>controller.action(item.id,'reject'));
-            list.append(card);
-        }
-    }
-    document.getElementById('railTicketsNavButton').addEventListener('click',()=>showMainSection(page,document.getElementById('railTicketsNavButton')));
-    const files=document.getElementById('railTicketFiles'),folder=document.getElementById('railTicketFolder'),drop=document.getElementById('railTicketDrop');
-    document.getElementById('railChooseFiles').onclick=()=>files.click();document.getElementById('railChooseFolder').onclick=()=>folder.click();
-    for(const input of [files,folder])input.onchange=()=>{error.hidden=true;controller.upload(input.files);input.value='';};
-    let collecting=false;
-    for(const event of ['dragover','drop'])drop.addEventListener(event,async e=>{e.preventDefault();if(event==='drop'){
-        drop.classList.remove('dragover');if(collecting||controller.uploading)return;collecting=true;error.hidden=true;
-        try{const result=await railDropFiles(e.dataTransfer);await controller.upload(result.files);if(result.errors.length){error.textContent=result.errors.join('; ');error.hidden=false;}}
-        finally{collecting=false;}
-    }else drop.classList.add('dragover');});
-    drop.addEventListener('dragleave',()=>drop.classList.remove('dragover'));
-    document.addEventListener('employee-saved',()=>{if(createTicketId){const id=createTicketId;createTicketId=null;controller.action(id,'refresh');}});
-    document.addEventListener('luvr-rail-deleted',event=>{controller.removeDeletedTicket(event.detail.ticket_id);if(createTicketId===event.detail.ticket_id)createTicketId=null;});
-    // Cancelling employee creation leaves the parsed ticket intact.
-    return controller;
-}
-if(typeof document!=='undefined')initRailTickets();
-if(typeof module!=='undefined')module.exports={RailTicketController,railDate,RAIL_STATUS_LABELS,railDropFiles,railBatchStats,railEmployeeName};
+const railConstructionChoices = typeof ConstructionChoices !== 'undefined' ? ConstructionChoices : require('./construction_choices.js');
+const RAIL_STATUS_LABELS={EMPLOYEE_NOT_FOUND:'Сотрудник не найден',ARCHIVED_EMPLOYEE:'Сотрудник находится в архиве',NEEDS_DIRECTION:'Выберите направление',READY:'Требует подтверждения',CONFIRMED:'Подтверждён',PARSE_ERROR:'Требует проверки',DUPLICATE:'Билет уже обработан',REJECTED:'Отклонён',ANNULLED:'Аннулирован',UNSUPPORTED:'Посторонний файл',NOT_LUVR_ROUTE:'Без станции Салым'};
+function railEmployeeName(value){return (value||'').trim().split(/\s+/u).filter(Boolean).map(part=>part.charAt(0).toUpperCase()+part.slice(1).toLowerCase()).join(' ');}
+async function railDropFiles(dataTransfer){const entries=Array.from(dataTransfer.items||[]).filter(x=>x.kind==='file').map(x=>x.webkitGetAsEntry?.());if(!entries.length||entries.some(x=>!x))return {files:Array.from(dataTransfer.files),errors:[]};const files=[],errors=[],stack=entries.slice();while(stack.length){const entry=stack.pop();try{if(entry.isFile)files.push(await new Promise((resolve,reject)=>entry.file(resolve,reject)));else if(entry.isDirectory){const reader=entry.createReader();while(true){const batch=await new Promise((resolve,reject)=>reader.readEntries(resolve,reject));if(!batch.length)break;stack.push(...batch);}}}catch(e){errors.push('Не удалось прочитать элемент папки: '+entry.name);}}return {files,errors};}
+function railBatchStats(items,fileCount=items.length){const count=fn=>items.filter(fn).length;return {'Найдено файлов':fileCount,'Билетов РЖД (разобрано)':count(x=>['PARSED','CONFIRMED','REJECTED','ANNULLED'].includes(x.status)&&!!x.full_name&&!!x.departure_datetime&&!!x.arrival_datetime),'Для ЛУВР (есть Салым)':count(x=>x.is_luvr_route===true),'Без станции Салым':count(x=>x.processing_status==='NOT_LUVR_ROUTE'),'Сотрудник не найден':count(x=>x.processing_status==='EMPLOYEE_NOT_FOUND'),'Требуют проверки':count(x=>['PARSE_ERROR','ARCHIVED_EMPLOYEE','NEEDS_DIRECTION'].includes(x.processing_status)),'Готовы к подтверждению':count(x=>x.processing_status==='READY'),'Дубликаты':count(x=>x.duplicate===true),'Ошибки парсинга':count(x=>x.processing_status==='PARSE_ERROR'),'Посторонние файлы':count(x=>x.processing_status==='UNSUPPORTED')};}
+function railDate(value){return value?value.slice(0,10).split('-').reverse().join('.')+(value.length>10?' '+value.slice(11,16):''):'—';}
+function railTripDate(item){return item.movement_type==='ARRIVAL'?item.arrival_datetime:item.movement_type==='DEPARTURE'?item.departure_datetime:(item.arrival_datetime||item.departure_datetime);}
+function railDirection(item){return item.movement_type==='ARRIVAL'?'✈ Заезд':item.movement_type==='DEPARTURE'?'✈ Убытие':'—';}
+class RailTicketController{constructor(request,render,error){this.request=request;this.render=render;this.error=error;this.items=[];this.batchItems=[];this.pending=new Set();this.uploading=false;this.deletedIds=new Set();this.selectedId=null;this.objects=[];this.employees=[];this.employeeSelections=new Map();}removeDeletedTicket(id){this.deletedIds.add(id);this.items=this.items.filter(t=>t.id!==id);this.batchItems=this.batchItems.filter(t=>t.id!==id);if(this.selectedId===id)this.selectedId=null;this.render(this);}merge(items){for(const item of items){if(this.deletedIds.has(item.id))continue;const index=item.id?this.items.findIndex(x=>x.id===item.id):-1;if(index<0)this.items.push(item);else this.items[index]=item;}this.render(this);}async load(){try{const [data,objects,employees]=await Promise.all([this.request('/api/rail-tickets'),this.request('/api/objects'),this.request('/api/employees?include_archived=true')]);this.employees=employees.items||[];this.items=(data.items||[]).filter(x=>!this.deletedIds.has(x.id));this.objects=await railConstructionChoices.load(this.request,objects.items||[]);this.render(this);}catch(e){this.error(e.message);}}async upload(files){if(this.uploading)return;const list=Array.from(files);if(!list.length)return;this.uploading=true;this.batchItems=[];this.fileCount=list.length;this.render(this);const batches=[];let batch=[],bytes=0;for(const file of list){const size=Math.min(file.size,10*1024*1024+1);if(batch.length&&(batch.length===50||bytes+size>50*1024*1024)){batches.push(batch);batch=[];bytes=0;}batch.push(file);bytes+=size;}if(batch.length)batches.push(batch);try{for(const files of batches){let items;try{const form=new FormData();for(const file of files)form.append('files',file,file.name);items=(await this.request('/api/rail-tickets/upload',{method:'POST',body:form})).items;}catch(e){this.error(e.message);items=files.map(file=>({source_filename:file.name,processing_status:'PARSE_ERROR',parse_errors:['Не удалось загрузить файл. Повторите загрузку.']}));}this.batchItems.push(...items.filter(t=>!this.deletedIds.has(t.id)));if(items[0]?.id)this.selectedId=items[0].id;this.merge(items);}}finally{this.uploading=false;this.render(this);}}async action(id,operation,value){if(this.pending.has(id))return;this.pending.add(id);this.render(this);try{const isObject=operation==='object',isDirection=operation==='direction',isRefresh=operation==='refresh',url=`/api/rail-tickets/${id}${isRefresh?'':'/'+operation}`,options=isRefresh?{}:{method:(isObject||isDirection)?'PATCH':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(isObject?railConstructionChoices.reference(value):isDirection?{movement_type:value}:operation==='confirm'&&value?{employee_id:Number(value)}:{})};const item=(await this.request(url,options)).item;this.batchItems=this.batchItems.map(old=>old.id===item.id?{...item,duplicate:old.duplicate}:old);this.selectedId=item.id;this.merge([item]);if(['annul','restore','confirm','object'].includes(operation)&&typeof document!=='undefined')document.dispatchEvent(new CustomEvent('luvr-ticket-state-changed',{detail:{employee_id:item.employee_id}}));}catch(e){this.error(e.message);}finally{this.pending.delete(id);this.render(this);}}}
+async function railRequest(url,options={}){const response=await fetch(url,options),body=await response.json().catch(()=>null);if(!response.ok)throw new Error(body?.message||'Не удалось выполнить операцию с билетом');return body;}
+function initRailTickets(){const page=document.getElementById('railTicketsPage'),list=document.getElementById('railTicketList'),details=document.getElementById('railTicketDetails'),error=document.getElementById('railTicketError'),empty=document.getElementById('railTicketEmpty');if(!page)return;const employeeFilter=document.getElementById('railFilterEmployee'),directionFilter=document.getElementById('railFilterDirection'),statusFilter=document.getElementById('railFilterStatus'),dateFrom=document.getElementById('railFilterDateFrom'),dateTo=document.getElementById('railFilterDateTo');const controller=new RailTicketController(railRequest,render,message=>{error.textContent=message;error.hidden=false;});function statusClass(item){return item.status==='CONFIRMED'?'ticket-ok':item.status==='ANNULLED'||item.status==='REJECTED'?'ticket-bad':'ticket-warn';}function visible(item){const q=employeeFilter.value.trim().toLowerCase(),trip=railTripDate(item)?.slice(0,10)||'';return (!q||`${item.employee_name||''} ${item.full_name||''}`.toLowerCase().includes(q))&&(!directionFilter.value||item.movement_type===directionFilter.value)&&(!statusFilter.value||item.status===statusFilter.value)&&(!dateFrom.value||trip>=dateFrom.value)&&(!dateTo.value||trip<=dateTo.value);}function section(title){const s=document.createElement('section');s.className='ticket-detail-section';const h=document.createElement('h3');h.textContent=title;s.append(h);return s;}function row(label,value,cls=''){const r=document.createElement('div');r.className='ticket-detail-row';const a=document.createElement('span');a.textContent=label;const b=document.createElement('strong');b.textContent=value||'—';if(cls)b.className=cls;r.append(a,b);return r;}function renderDetails(item){details.replaceChildren();const head=document.createElement('div');head.className='ticket-details-head';const title=document.createElement('h2');title.textContent='Данные билета';head.append(title);if(item){const state=document.createElement('span');state.className=item.employee_state==='ACTIVE'?'ticket-ok':item.employee_state==='NEW'?'ticket-warn':'ticket-bad';state.textContent=item.employee_state_label||'—';head.append(state);}details.append(head);if(!item){details.append(Object.assign(document.createElement('p'),{textContent:'Выберите билет в списке.',className:'ui-muted'}));return;}const main=section('Основная информация');main.append(row('ФИО из билета',item.full_name_raw||item.full_name),row('Сотрудник',item.employee_name||'Не найден'),row('Должность',item.position_name||'—'));const match=document.createElement('div');match.className='ticket-match-line';match.textContent=item.employee_id?'✓ Сотрудник найден в базе':'! Сотрудник не найден';main.append(match,row('Направление',railDirection(item),item.movement_type==='ARRIVAL'?'ticket-direction-arrival':'ticket-direction-departure'),row('Дата поездки',railDate(railTripDate(item))),row('Статус билета',RAIL_STATUS_LABELS[item.processing_status]||item.status,statusClass(item)));if(item.processing_status==='READY'){const b=document.createElement('button');b.type='button';b.className='primary-button ticket-confirm';b.textContent='Подтвердить сотрудника';b.disabled=controller.pending.has(item.id);b.onclick=()=>controller.action(item.id,'confirm');main.append(b);}if(typeof railEmployeeControls==='function'){const controls=railEmployeeControls(item,controller);if(controls)main.append(controls);}details.append(main);const route=section('Маршрут');const routeTitle=document.createElement('div');routeTitle.className='ticket-route-title';routeTitle.textContent=`${item.departure_station||'—'} → ${item.arrival_station||'—'}`;route.append(routeTitle,row('Отправление',`${item.departure_station||'—'} · ${railDate(item.departure_datetime)}`),row('Прибытие',`${item.arrival_station||'—'} · ${railDate(item.arrival_datetime)}`));details.append(route);if(item.movement_type==='ARRIVAL'){const dest=section('Назначение (для заезда)');const label=document.createElement('label');label.textContent='Объект';const select=document.createElement('select');railConstructionChoices.fill(select,controller.objects,item);const selectedObjectValue=select.value;select.disabled=controller.pending.has(item.id)||item.status==='ANNULLED';label.append(select);dest.append(label);const save=document.createElement('button');save.type='button';save.className='primary-button ticket-object-save';save.textContent='Сохранить';save.disabled=select.disabled;save.onclick=async()=>{save.disabled=true;await controller.action(item.id,'object',select.value);};select.onchange=()=>{save.disabled=select.disabled||String(select.value)===selectedObjectValue;};save.disabled=save.disabled||String(select.value)===selectedObjectValue;dest.append(save);details.append(dest);}const plan=section('Плановая дата');const planLabel=item.movement_type==='ARRIVAL'?'Планируемая дата убытия':'Планируемая дата заезда';plan.append(row(planLabel,railDate(item.planned_date).split(' ')[0]));details.append(plan);if(item.id){const restoring=item.status==='ANNULLED';const annul=document.createElement('button');annul.type='button';annul.className='ticket-annul-button';annul.textContent=restoring?'Восстановить билет':'⊘  Аннулировать билет';annul.disabled=controller.pending.has(item.id);annul.onclick=()=>{if(restoring){controller.action(item.id,'restore');return;}if(confirm('Аннулировать билет? Запись останется в базе, но билет будет исключён из расчётов.'))controller.action(item.id,'annul');};details.append(annul);}}
+function renderSummary(state){const el=document.getElementById('railBatchSummary');el.replaceChildren();if(!state.batchItems.length){el.hidden=true;return;}el.hidden=false;const h=document.createElement('div');h.className='tickets-result-head';h.innerHTML='<strong>✓ Результат обработки</strong><span>'+new Date().toLocaleString('ru-RU')+'</span>';el.append(h);const grid=document.createElement('div');grid.className='tickets-result-grid';for(const [k,v] of Object.entries(railBatchStats(state.batchItems,state.fileCount))){const x=document.createElement('div');x.innerHTML=`<span>${k}</span><strong>${v}</strong>`;grid.append(x);}el.append(grid);}
+function render(state){list.replaceChildren();document.getElementById('railUploadProgress').hidden=!state.uploading;document.querySelectorAll('[data-rail-upload]').forEach(b=>b.disabled=state.uploading);renderSummary(state);const items=state.items.filter(visible);empty.hidden=items.length!==0;for(const item of items){const tr=document.createElement('tr');if(item.id===state.selectedId)tr.classList.add('selected');tr.onclick=()=>{state.selectedId=item.id;render(state);};const values=[[item.id||'—',''],[railDate(railTripDate(item)),''],[item.employee_name||railEmployeeName(item.full_name)||'—',''],[railDirection(item),item.movement_type==='ARRIVAL'?'ticket-direction-arrival':'ticket-direction-departure'],[`${item.departure_station||'—'} → ${item.arrival_station||'—'}`,''],[item.object_name||'—',''],[RAIL_STATUS_LABELS[item.processing_status]||item.status||'—',statusClass(item)]];for(const [text,cls] of values){const td=document.createElement('td'),span=document.createElement('span');span.textContent=text;if(cls)span.className=cls;td.append(span);tr.append(td);}list.append(tr);}const selected=state.items.find(x=>x.id===state.selectedId)||items[0]||null;if(selected&&state.selectedId==null)state.selectedId=selected.id;renderDetails(selected);}for(const control of [employeeFilter,directionFilter,statusFilter,dateFrom,dateTo])control.addEventListener(control.tagName==='INPUT'?'input':'change',()=>render(controller));document.getElementById('railResetFilters').onclick=()=>{employeeFilter.value='';directionFilter.value='';statusFilter.value='';dateFrom.value='';dateTo.value='';render(controller);};document.getElementById('railTicketsNavButton').addEventListener('click',async()=>{showMainSection(page,document.getElementById('railTicketsNavButton'));await controller.load();});const files=document.getElementById('railTicketFiles'),folder=document.getElementById('railTicketFolder'),drop=document.getElementById('railTicketDrop');document.getElementById('railChooseFiles').onclick=()=>files.click();document.getElementById('railChooseFolder').onclick=()=>folder.click();for(const input of [files,folder])input.onchange=()=>{error.hidden=true;controller.upload(input.files);input.value='';};for(const event of ['dragover','drop'])drop.addEventListener(event,async e=>{e.preventDefault();if(event==='drop'){drop.classList.remove('dragover');const result=await railDropFiles(e.dataTransfer);await controller.upload(result.files);if(result.errors.length){error.textContent=result.errors.join('; ');error.hidden=false;}}else drop.classList.add('dragover');});drop.addEventListener('dragleave',()=>drop.classList.remove('dragover'));document.addEventListener('luvr-rail-deleted',event=>controller.removeDeletedTicket(event.detail.ticket_id));return controller;}
+if(typeof document!=='undefined')initRailTickets();if(typeof module!=='undefined')module.exports={RailTicketController,railDate,RAIL_STATUS_LABELS,railDropFiles,railBatchStats,railEmployeeName,railTripDate,railDirection};

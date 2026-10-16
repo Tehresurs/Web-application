@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from typing import Literal
 from pathlib import Path
+import os
 import tkinter as tk
 from tkinter import filedialog
 
@@ -8,13 +9,21 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictBool, model_validator
 from app.api.daily_control import router as daily_control_router
 from app.api.known_values import router as known_values_router
 from app.api.luvr_history import router as luvr_history_router
 from app.api.rail_tickets import router as rail_tickets_router
 from app.api.luvr_calendar import router as luvr_calendar_router
 from app.api.luvr_month import router as luvr_month_router
+from app.api.employee_absences import router as employee_absences_router
+from app.api.production_assignments import router as production_assignments_router
+from app.api.production_matrix_overrides import router as production_matrix_overrides_router
+from app.api.production_matrix import router as production_matrix_router
+from app.api.deployment import router as deployment_router
+from app.api.crew_memberships import router as crew_memberships_router
+from app.api.object_archive import router as object_archive_router
+from app.api.construction_identity import router as construction_identity_router
 
 from app.services.processing_service import list_report_files, process_folder
 from app.repositories.assignments import (
@@ -62,6 +71,16 @@ app.include_router(luvr_history_router)
 app.include_router(rail_tickets_router)
 app.include_router(luvr_calendar_router)
 app.include_router(luvr_month_router)
+app.include_router(employee_absences_router)
+app.include_router(production_assignments_router)
+app.include_router(production_matrix_overrides_router)
+app.include_router(production_matrix_router)
+app.include_router(deployment_router)
+app.include_router(crew_memberships_router)
+app.include_router(object_archive_router)
+app.include_router(construction_identity_router)
+from app.api.clean_construction import router as clean_construction_router
+app.include_router(clean_construction_router)
 
 app.mount(
     "/static",
@@ -77,7 +96,7 @@ async def processing_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="processing.html",
-        context={},
+        context={"test_mode": os.getenv("APP_DB_PROFILE") == "test"},
     )
 
 
@@ -157,6 +176,7 @@ class RenameSubcategoryRequest(BaseModel):
 
 class PoTypeRequest(BaseModel):
     name: str = Field(min_length=1)
+    default_category_id: int | None = Field(default=None,gt=0)
 
 
 class CrewRequest(BaseModel):
@@ -167,6 +187,7 @@ class CrewRequest(BaseModel):
 
 
 class EmployeeRequest(BaseModel):
+    email: str | None = Field(default=None, max_length=254)
     full_name: str = Field(min_length=1)
     position_id: int | None = None
     phone: str | None = None
@@ -178,9 +199,16 @@ class EmployeeRequest(BaseModel):
 
 
 class EmployeeAssignmentRequest(BaseModel):
-    object_id: int
+    entity_id: int | None = Field(default=None, gt=0)
+    object_id: int | None = None
     po_id: int
     category_id: int
+
+    @model_validator(mode='after')
+    def reference_required(self):
+        if self.entity_id is None and self.object_id is None:
+            raise ValueError('Укажите entity_id или object_id')
+        return self
 
 
 class EmployeeArchiveState(BaseModel):
@@ -204,6 +232,11 @@ class PositionRequest(BaseModel):
     specialty: str | None = None
     work_location: Literal["OBJECT", "OFFICE"] | None = None
     work_schedule: Literal["SHIFT", "FIVE_TWO"] | None = None
+    report_description: str | None = None
+    aos_description: str | None = None
+    requires_daily_report: StrictBool = False
+    equipment_description: str | None = None
+    planned_count: int = Field(default=0, ge=0, le=2147483647, strict=True)
 
 
 @app.post("/api/process-folder")
@@ -239,10 +272,10 @@ def po_types():
 
 
 @app.get("/api/objects")
-def objects():
+def objects(archive: Literal["active", "archived", "all"] = "all"):
     return {
         "status": "ok",
-        "items": get_objects(),
+        "items": get_objects(archive),
     }
 
 
@@ -276,8 +309,11 @@ def add_object(payload: CreateObjectRequest):
 
 
 @app.patch("/api/objects/{object_id}")
-def edit_object(object_id: int, payload: CreateObjectRequest):
+def edit_object(object_id: int, payload: CreateObjectRequest, id_type: Literal['legacy','entity']='legacy'):
     try:
+        if id_type == 'entity':
+            from app.api.construction_identity import change_entity
+            return {'status':'ok','object':change_entity(object_id,name=payload.name)}
         item = update_object(object_id=object_id, name=payload.name)
         return {"status": "ok", "object": item}
     except ValueError as error:
@@ -376,7 +412,7 @@ def remove_object_subcategory(category_id: int):
 @app.post("/api/po-types")
 def add_po_type(payload: PoTypeRequest):
     try:
-        item = create_po_type(payload.name)
+        item = create_po_type(payload.name,payload.default_category_id)
 
         return {
             "status": "ok",
@@ -402,6 +438,7 @@ def update_po_type(
         item = rename_po_type(
             po_id=po_id,
             name=payload.name,
+            default_category_id=payload.default_category_id if "default_category_id" in payload.model_fields_set else ...,
         )
 
         return {
@@ -453,7 +490,7 @@ def add_position(payload: PositionRequest):
         item = create_position(
             name=payload.name,
             action_description=payload.action_description,
-            **payload.model_dump(include={"specialty", "work_location", "work_schedule"}, exclude_unset=True),
+            **payload.model_dump(include={"specialty", "work_location", "work_schedule", "report_description", "aos_description", "requires_daily_report", "planned_count", "equipment_description"}, exclude_unset=True),
         )
 
         return {
@@ -481,7 +518,7 @@ def update_position(
             position_id=position_id,
             name=payload.name,
             action_description=payload.action_description,
-            **payload.model_dump(include={"specialty", "work_location", "work_schedule"}, exclude_unset=True),
+            **payload.model_dump(include={"specialty", "work_location", "work_schedule", "report_description", "aos_description", "requires_daily_report", "planned_count", "equipment_description"}, exclude_unset=True),
         )
 
         return {
@@ -535,7 +572,7 @@ def add_employee(payload: EmployeeRequest):
             position_id=payload.position_id,
             phone=payload.phone,
             crew_id=payload.crew_id,
-            **payload.model_dump(include={"nrs_number", "max_shift_days", "max_off_shift_days", "dismissal_date"}, exclude_unset=True),
+            **payload.model_dump(include={"nrs_number", "max_shift_days", "max_off_shift_days", "dismissal_date", "email"}, exclude_unset=True),
         )
 
         return {
@@ -565,7 +602,7 @@ def edit_employee(
             position_id=payload.position_id,
             phone=payload.phone,
             crew_id=payload.crew_id,
-            **payload.model_dump(include={"nrs_number", "max_shift_days", "max_off_shift_days", "dismissal_date"}, exclude_unset=True),
+            **payload.model_dump(include={"nrs_number", "max_shift_days", "max_off_shift_days", "dismissal_date", "email"}, exclude_unset=True),
         )
 
         return {
@@ -643,6 +680,7 @@ def add_employee_assignment(
         item = create_employee_assignment(
             employee_id=employee_id,
             object_id=payload.object_id,
+            entity_id=payload.entity_id,
             po_id=payload.po_id,
             category_id=payload.category_id,
         )
@@ -668,6 +706,7 @@ def edit_employee_assignment(
             employee_id=employee_id,
             assignment_id=assignment_id,
             object_id=payload.object_id,
+            entity_id=payload.entity_id,
             po_id=payload.po_id,
             category_id=payload.category_id,
         )

@@ -46,6 +46,13 @@ function luvrExportPayload(selection,rows) {
     return {...selection,employee_ids:Array.from(rows,row=>Number(row.dataset.employee))};
 }
 
+function luvrMatchesDayFilters(employee,filters) {
+    return Object.entries(filters).every(([date,value])=>{
+        const actual=String(employee.days.find(day=>day.date===date)?.final_display??'');
+        return value==='WORKING'?['1','0,5'].includes(actual):actual===value;
+    });
+}
+
 function luvrSpecialtyMissing(employee) {return !(employee.specialty||'').trim();}
 
 async function openLuvrEmployee(employeeId,request,open) {
@@ -59,7 +66,7 @@ function initLuvrMonth() {
     const $=id=>document.getElementById(id),page=$('luvrMonthPage');if(!page)return;
     const year=$('luvrMonthYear'),month=$('luvrMonthNumber'),editor=$('luvrMonthEditor'),error=$('luvrMonthError');
     const value=$('luvrMonthValue'),comment=$('luvrMonthComment'),picker=$('luvrMonthEmployee');let editing=null;
-    let sortField='full_name',sortDirection='asc',exporting=false;
+    let sortField='full_name',sortDirection='asc',exporting=false,dayFilters={};
     const controller=new LuvrMonthController(luvrHistoryRequest,render,message=>{error.textContent=message;error.hidden=false;});
     const now=new Date();year.value=now.getFullYear();month.value=now.getMonth()+1;
     for(const [code,label] of Object.entries(LUVR_CALENDAR_VALUES))value.append(new Option(label,code));
@@ -68,12 +75,12 @@ function initLuvrMonth() {
         if(!controller.data?.employees.some(employee=>employee.employee_id===Number(event.detail?.id)))return;
         close();controller.epoch++;controller.busy=false;controller.load();
     });
-    document.addEventListener('luvr-rail-deleted',()=>{
+    for(const eventName of ['luvr-rail-deleted','luvr-ticket-state-changed'])document.addEventListener(eventName,()=>{
         close();controller.epoch++;controller.busy=false;controller.data=null;
         controller.render(controller);if(controller.selection)controller.load();
     });
     const select=()=>{close();error.hidden=true;picker.hidden=true;return controller.select(year.value,month.value,$('luvrMonthAsOf').value);};
-    const changePeriod=()=>{$('luvrMonthAsOf').value='';return select();};
+    const changePeriod=()=>{dayFilters={};$('luvrMonthAsOf').value='';return select();};
     year.onchange=changePeriod;month.onchange=changePeriod;$('luvrMonthAsOf').onchange=select;
     $('luvrDurationClose').onclick=()=>{$('luvrDurationDetails').hidden=true;};
     $('luvrMonthNavButton').onclick=()=>{showMainSection(page,$('luvrMonthNavButton'));select();};
@@ -91,6 +98,7 @@ function initLuvrMonth() {
         }catch(e){error.textContent=e.message;error.hidden=false;}
         finally{exporting=false;button.disabled=controller.busy||!controller.data?.formed;}
     };
+    $('luvrDayFiltersReset').onclick=()=>{dayFilters={};close();render(controller);};
     $('luvrMonthRefresh').onclick=()=>{close();error.hidden=true;controller.load();};
     $('luvrMonthAdd').onclick=async()=>{
         const epoch=controller.epoch;
@@ -123,6 +131,7 @@ function initLuvrMonth() {
         $('luvrMonthAdd').disabled=state.busy||!state.data?.formed;
         $('luvrMonthForm').hidden=!!state.data?.formed;
         $('luvrMonthInfo').textContent=(state.busy?'Обновление…':!state.data?'Выберите год и месяц':!state.data.formed?'Месяц ещё не сформирован':`Состав сохранён. Сотрудников: ${state.data.employees.length}`)+(state.data?` · Состояние на ${state.data.as_of_date}${state.data.is_projection?' · Прогноз по известной истории':''}`:'');
+        $('luvrDayFiltersInfo').textContent='';$('luvrDayFiltersReset').hidden=!Object.keys(dayFilters).length;
         renderLuvrDayTotals($('luvrMonthTotals'),state.data);
         const head=$('luvrMonthHead'),body=$('luvrMonthBody');head.replaceChildren();body.replaceChildren();if(!state.data)return;
         const data=state.data,headers=['№','ФИО','Должность','№ НРС','Специальность','Место','График','Состояние',...luvrMonthHeaders(data.year,data.month,data.days_in_month),'Раб. дни','Д','МВ','П','Действия'];
@@ -141,10 +150,29 @@ function initLuvrMonth() {
                     render(controller);scroll.scrollLeft=left;
                 };th.append(button);
             }else th.textContent=text;
+            if(i>=8&&i<8+data.days_in_month){
+                const date=`${data.year}-${String(data.month).padStart(2,'0')}-${String(i-7).padStart(2,'0')}`;
+                const filter=document.createElement('select');filter.className='luvr-day-filter';filter.dataset.date=date;
+                filter.setAttribute('aria-label',`Фильтр за ${date.split('-').reverse().join('.')}`);
+                filter.append(new Option('Все','*'));
+                const values=new Set(data.employees.map(e=>String(e.days.find(d=>d.date===date)?.final_display??'')));
+                if(Object.hasOwn(dayFilters,date))values.add(dayFilters[date]);
+                if(values.has('1')||values.has('0,5')||values.has('WORKING'))filter.append(new Option('1 + 0,5','WORKING'));
+                for(const v of [...values].filter(v=>v!=='1'&&v!=='WORKING').sort((a,b)=>a.localeCompare(b,'ru',{numeric:true})))filter.append(new Option(v||'Пусто',v));
+                filter.value=Object.hasOwn(dayFilters,date)?dayFilters[date]:'*';filter.disabled=state.busy;
+                filter.classList.toggle('is-active',Object.hasOwn(dayFilters,date));
+                filter.onchange=()=>{const scroll=page.querySelector('.luvr-month-scroll'),left=scroll.scrollLeft;
+                    if(filter.value==='*')delete dayFilters[date];else dayFilters[date]=filter.value;
+                    close();render(controller);scroll.scrollLeft=left;
+                };th.append(filter);
+            }
             head.append(th);
         });
+        const count=data.employees.filter(e=>luvrMatchesDayFilters(e,dayFilters)).length;
+        $('luvrDayFiltersInfo').textContent=Object.keys(dayFilters).length?`Показано ${count} из ${data.employees.length}. Итоги и Excel — по всему составу месяца.`:'';
+        $('luvrDayFiltersReset').hidden=!Object.keys(dayFilters).length;
         sortLuvrEmployees(data.employees,sortField,sortDirection).forEach((employee,index)=>{
-            const tr=document.createElement('tr');tr.dataset.employee=employee.employee_id;
+            const tr=document.createElement('tr');tr.dataset.employee=employee.employee_id;tr.hidden=!luvrMatchesDayFilters(employee,dayFilters);
             const cell=text=>{const td=document.createElement('td');td.textContent=text??'';tr.append(td);return td;};
             cell(index+1);
             const nameCell=cell('');nameCell.className='luvr-name';
@@ -167,7 +195,7 @@ function initLuvrMonth() {
             }
             employee.days.forEach(day=>{
                 const td=cell(''),button=document.createElement('button');button.type='button';button.textContent=day.final_display;button.dataset.date=day.date;
-                button.className='luvr-month-day';button.disabled=state.busy;button.setAttribute('aria-label',`${day.date}: ${day.final_display||'пусто'}`);
+                luvrColorDay(td,day);button.className='luvr-month-day';button.disabled=state.busy;button.setAttribute('aria-label',`${day.date}: ${day.final_display||'пусто'}`);
                 button.title=[day.is_sick?'Период болезни':LUVR_SOURCES[day.final_source_type],...day.warnings.map(w=>w.message)].filter(Boolean).join('. ');
                 if(day.manually_changed)td.classList.add('luvr-day-manual');button.onclick=()=>edit(employee,day);td.append(button);
             });
@@ -179,4 +207,4 @@ function initLuvrMonth() {
     render(controller);return controller;
 }
 if(typeof document!=='undefined')initLuvrMonth();
-if(typeof module!=='undefined')module.exports={LuvrMonthController,luvrMonthHeaders,luvrExportPayload,luvrSpecialtyMissing,openLuvrEmployee};
+if(typeof module!=='undefined')module.exports={LuvrMonthController,luvrMonthHeaders,luvrExportPayload,luvrSpecialtyMissing,openLuvrEmployee,luvrMatchesDayFilters};

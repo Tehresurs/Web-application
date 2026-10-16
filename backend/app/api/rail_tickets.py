@@ -4,7 +4,7 @@ import logging
 
 from fastapi import APIRouter, File, UploadFile
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
 from app.repositories import rail_tickets
@@ -27,6 +27,8 @@ class TicketMovement(BaseModel):
 
 
 class RailTicket(BaseModel):
+    entity_id: int | None = None
+    current_hierarchy: dict | None = None
     id: int | None = None
     file_hash: str | None = None
     source_filename: str
@@ -39,8 +41,8 @@ class RailTicket(BaseModel):
     arrival_station: str | None = None
     arrival_datetime: datetime | None = None
     parse_errors: list[str] = []
-    status: Literal["PARSED","PARSE_ERROR","REJECTED","CONFIRMED"] | None = None
-    processing_status: Literal["EMPLOYEE_NOT_FOUND","ARCHIVED_EMPLOYEE","NEEDS_DIRECTION","READY","CONFIRMED","PARSE_ERROR","DUPLICATE","REJECTED","UNSUPPORTED","NOT_LUVR_ROUTE"]
+    status: Literal["PARSED","PARSE_ERROR","REJECTED","CONFIRMED","ANNULLED"] | None = None
+    processing_status: Literal["EMPLOYEE_NOT_FOUND","ARCHIVED_EMPLOYEE","NEEDS_DIRECTION","READY","CONFIRMED","PARSE_ERROR","DUPLICATE","REJECTED","ANNULLED","UNSUPPORTED","NOT_LUVR_ROUTE"]
     notice: str | None = None
     is_luvr_route: bool | None = None
     direction_candidate: Literal["ARRIVAL","DEPARTURE"] | None = None
@@ -53,6 +55,12 @@ class RailTicket(BaseModel):
     movement_id: int | None = None
     movement: TicketMovement | None = None
     duplicate: bool = False
+    object_id: int | None = None
+    object_name: str | None = None
+    employee_state: str | None = None
+    employee_state_label: str | None = None
+    planned_date: datetime | None = None
+    position_name: str | None = None
 
 
 class TicketResponse(BaseModel):
@@ -65,13 +73,28 @@ class UploadResponse(BaseModel):
     items: list[RailTicket]
 
 
+class TicketListResponse(BaseModel):
+    status: Literal["ok"] = "ok"
+    items: list[RailTicket]
+
+
 class DirectionRequest(BaseModel):
     model_config=ConfigDict(extra="forbid")
     movement_type: Literal["ARRIVAL","DEPARTURE"]
 
 
+class ObjectRequest(BaseModel):
+    model_config=ConfigDict(extra="forbid")
+    object_id: int | None = None
+    entity_id: int | None = Field(default=None,gt=0)
+
+
 class ConfirmRequest(BaseModel):
     model_config=ConfigDict(extra="forbid")
+
+
+class EmployeeConfirmRequest(ConfirmRequest):
+    employee_id: int | None = Field(default=None,gt=0)
 
 
 def _response(operation,*args):
@@ -104,6 +127,11 @@ async def upload_tickets(files: list[UploadFile] = File(...)):
         for file in files:await file.close()
 
 
+@router.get("",response_model=TicketListResponse,summary="Список сохранённых билетов")
+def list_tickets():
+    return {"status":"ok","items":rail_tickets.list_tickets()}
+
+
 @router.get("/{ticket_id}",response_model=TicketResponse,summary="Получить сохранённый разбор и повторить точное сопоставление ФИО")
 def get_ticket(ticket_id: int):return _response(rail_tickets.get_ticket,ticket_id)
 
@@ -113,8 +141,20 @@ def set_direction(ticket_id: int,payload: DirectionRequest):return _response(rai
 
 
 @router.post("/{ticket_id}/confirm",response_model=TicketResponse,summary="Атомарно создать одно RAIL-событие подтверждённого билета")
-def confirm(ticket_id: int,payload: ConfirmRequest):return _response(rail_tickets.confirm_ticket,ticket_id)
+def confirm(ticket_id: int,payload: EmployeeConfirmRequest):return _response(rail_tickets.confirm_ticket,ticket_id,payload.employee_id)
 
 
 @router.post("/{ticket_id}/reject",response_model=TicketResponse)
 def reject(ticket_id: int,payload: ConfirmRequest):return _response(rail_tickets.reject_ticket,ticket_id)
+
+
+@router.patch("/{ticket_id}/object",response_model=TicketResponse,summary="Назначить объект для заезда")
+def set_object(ticket_id: int,payload: ObjectRequest):return _response(rail_tickets.set_ticket_object,ticket_id,payload.object_id,payload.entity_id)
+
+
+@router.post("/{ticket_id}/annul",response_model=TicketResponse,summary="Аннулировать билет без удаления истории")
+def annul(ticket_id: int,payload: ConfirmRequest):return _response(rail_tickets.annul_ticket,ticket_id)
+
+
+@router.post("/{ticket_id}/restore",response_model=TicketResponse,summary="Восстановить состояние билета до аннулирования")
+def restore(ticket_id: int,payload: ConfirmRequest):return _response(rail_tickets.restore_ticket,ticket_id)

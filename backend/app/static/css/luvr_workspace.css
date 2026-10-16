@@ -1,0 +1,73 @@
+/* Shared employee/matrix visual language, scoped to the LUVR workspace. */
+.luvr-month-table tr[hidden]{display:none!important}
+#luvrMonthPage .luvr-day-filter{display:block;width:66px;min-height:28px;padding:3px;margin:5px auto 0;font-size:11px}
+#luvrMonthPage .luvr-day-filter.is-active{background:#e9f2ff;border-color:#245db0;color:#1756a5}
+.luvr-day-filter-status{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px;color:#52647b}
+body:has(#luvrNavigation:not([hidden])) .sidebar{background:#132e50;color:#e6eef9}
+body:has(#luvrNavigation:not([hidden])) .sidebar :is(.logo,.nav-item){color:#dbe7f8}
+body:has(#luvrNavigation:not([hidden])) .sidebar .nav-item.active{background:#255185;color:#fff}
+body:has(#luvrNavigation:not([hidden])) .main{min-width:0}
+#luvrNavigation h2{font-size:20px;color:#163658}
+#luvrNavigation .luvr-tabs{gap:6px;border-bottom:1px solid #dce4ef;padding-bottom:8px}
+#luvrNavigation .secondary-button{border-radius:7px;color:#52647b;border-color:#dce4ef;background:#fff;font-size:13px}
+#luvrNavigation .active{background:#e9f2ff;color:#1756a5;border-color:#9dc0ee;box-shadow:inset 0 -2px #245db0}
+:is(#railTicketsPage,#luvrMonthPage,#luvrCalendarPage){min-width:0;max-width:100%;color:#163658}
+:is(#railTicketsPage,#luvrMonthPage,#luvrCalendarPage) :is(h1,h2){font-size:20px;line-height:1.4;margin:0 0 12px}
+:is(#railTicketsPage,#luvrMonthPage,#luvrCalendarPage) :is(.primary-button,.secondary-button){font:inherit;font-size:12px;min-height:36px;padding:8px 12px;border-radius:7px;border:1px solid #cad7e8;box-shadow:none}
+:is(#railTicketsPage,#luvrMonthPage,#luvrCalendarPage) .primary-button{background:#245db0;border-color:#245db0;color:#fff}
+:is(#railTicketsPage,#luvrMonthPage,#luvrCalendarPage) .secondary-button{background:#fff;color:#24476f}
+:is(#railTicketsPage,#luvrMonthPage,#luvrCalendarPage) :is(button,input,select,textarea):focus-visible{outline:2px solid #80b2ff;outline-offset:2px}
+:is(#railTicketsPage,#luvrMonthPage,#luvrCalendarPage) :is(input:not([type=file]),select,textarea){box-sizing:border-box;max-width:100%;min-width:0;border:1px solid #cad7e8;border-radius:7px;padding:8px 10px;background:#fff;color:#163658;font:inherit;font-size:13px;min-height:36px}
+:is(#railTicketsPage,#luvrMonthPage,#luvrCalendarPage) button:disabled{opacity:.55;cursor:not-allowed}
+:is(#luvrMonthPage,#luvrCalendarPage) .card,.tickets-toolbar,.tickets-filters,.luvr-calendar-toolbar{background:#fff;border:1px solid #dce4ef;border-radius:10px;padding:16px;box-shadow:none}
+.tickets-toolbar{align-items:center;flex-wrap:wrap}.tickets-toolbar p{font-size:12px;line-height:1.5}
+#railTicketDrop{box-sizing:border-box;min-height:56px;padding:8px 14px;margin:10px 0;background:#f4f8fd;border-color:#9dbce4;flex-wrap:wrap;gap:6px 10px}
+#railTicketsPage .tickets-filters{grid-template-columns:repeat(2,minmax(125px,.7fr)) minmax(180px,1.3fr) repeat(2,minmax(120px,.8fr)) auto;gap:10px;padding:12px}
+#railTicketsPage .tickets-filters label{color:#63758a;font-size:12px;min-width:0}
+#railTicketsPage .tickets-workspace{grid-template-columns:minmax(0,1fr) 340px}
+#railTicketsPage .tickets-list-wrap{overflow:auto;max-height:72vh;min-width:0;border-radius:10px;border-color:#dce4ef}
+.tickets-table{font-variant-numeric:tabular-nums}.tickets-table th{position:sticky;top:0;background:#edf3fa;color:#52647b;z-index:1;font-weight:600}
+.tickets-table :is(th,td){padding:8px;border-color:#e5ebf2}
+.tickets-table tr.selected{background:#e9f2ff}.tickets-table tr.selected td:first-child{box-shadow:inset 3px 0 #245db0}.tickets-table tr.selected td:nth-child(3){font-weight:600}
+#railTicketsPage .tickets-details{border-radius:10px;border-top:3px solid #245db0;min-width:0}
+.ticket-detail-section h3{background:#edf3fa;color:#24476f;font-size:13px}.ticket-route-title{font-size:14px}.ticket-detail-row{line-height:1.45}
+.ticket-ok,.ticket-direction-arrival{background:#e6f7eb;color:#19723e}.ticket-bad,.ticket-direction-departure{background:#ffe9ed;color:#b52d3b}.ticket-warn{background:#fff0df;color:#a94d08}
+.luvr-calendar-toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin:12px 0}
+.luvr-calendar-toolbar label,#luvrCalendarPage .rail-ticket-actions label{display:grid;gap:6px;font-size:12px;color:#63758a}
+#luvrMonthYear{width:100px}#luvrHeaderSettings{margin:12px 0;font-size:13px}#luvrHeaderSettings summary{cursor:pointer;font-weight:600;color:#24476f}
+#luvrHeaderForm{max-width:800px}#luvrHeaderForm .form-label{display:grid;gap:6px;margin:10px 0;color:#63758a}
+#luvrHeaderForm :is(input,textarea){width:100%}#luvrHeaderForm h3{font-size:14px;color:#24476f}
+:is(#luvrMonthInfo,#luvrCalendarInfo,#luvrCalendarPage>.card>p){font-size:12px;color:#63758a;line-height:1.5}
+.luvr-month-scroll,.luvr-calendar-scroll{background:white;border:1px solid #dce4ef;border-radius:10px;min-width:0}
+.luvr-month-table,.luvr-calendar-table{font-size:12px;font-variant-numeric:tabular-nums}
+.luvr-month-table :is(th,td){padding:6px;border-color:#e5ebf2}.luvr-month-table th,.luvr-calendar-table th{color:#52647b;background:#edf3fa;font-weight:600}
+.luvr-month-day{font:inherit;border-radius:5px;min-width:34px;min-height:30px}
+#luvrMonthPage .luvr-employee-link{display:block;box-sizing:border-box;width:100%;min-height:36px;padding:8px 12px;border:1px solid #b7cdec;border-radius:7px;background:#e9f2ff;color:#174b8a;font:inherit;font-weight:600;line-height:1.4;text-align:left;text-decoration:none;white-space:normal;overflow-wrap:anywhere;cursor:pointer;transition:background .15s,border-color .15s}
+#luvrMonthPage .luvr-employee-link:hover:not(:disabled){background:#d8e8ff;border-color:#739fd9;text-decoration:none}
+#luvrMonthPage .luvr-employee-link:active:not(:disabled){background:#c5dcfc}
+#luvrMonthPage .luvr-employee-link:focus-visible{outline:2px solid #245db0;outline-offset:2px}
+.luvr-duration-status{font-size:11px;line-height:1.45;border-radius:6px}
+.luvr-calendar-table :is(th,td){padding:8px;border-color:#e5ebf2}.luvr-calendar-table th{position:sticky;top:0;z-index:1}
+.luvr-calendar-scroll{max-height:65vh;overflow:auto}.luvr-calendar-table{min-width:740px}
+:is(#luvrMonthPage,#luvrCalendarPage) .luvr-calendar-editor{background:#f4f8fd;border:1px solid #cad7e8;border-top:3px solid #245db0;border-radius:10px;padding:14px;font-size:13px}
+.luvr-day-warning{padding:5px 8px;border-radius:5px;background:#fff0df;color:#a94d08}.luvr-day-manual{background:#eef6ff}
+@media(max-width:1450px){#railTicketsPage .tickets-filters{grid-template-columns:repeat(3,minmax(0,1fr))}#railTicketsPage .tickets-workspace{grid-template-columns:1fr}#railTicketsPage .tickets-details{position:static}.tickets-toolbar{gap:12px}}
+@media(max-width:700px){#railTicketsPage .tickets-filters{grid-template-columns:1fr 1fr}.tickets-toolbar{align-items:flex-start}.luvr-calendar-toolbar{padding:12px}#railTicketDrop{height:auto}.ticket-detail-row{grid-template-columns:100px minmax(0,1fr)}}
+
+/* Attendance colors; text values remain visible independently of color. */
+:is(#luvrMonthPage,#luvrCalendarPage) .luvr-colored-day,
+.luvr-color-key{background:var(--luvr-day-bg,#fff);color:var(--luvr-day-ink,#52647b)}
+[data-luvr-code="FULL"]{--luvr-day-bg:#dcfce7;--luvr-day-ink:#166534}
+[data-luvr-code="HALF"]{--luvr-day-bg:#ecfccb;--luvr-day-ink:#3f6212}
+[data-luvr-code="TRAVEL"]{--luvr-day-bg:#dbeafe;--luvr-day-ink:#1e40af}
+[data-luvr-code="OFF_SHIFT"]{--luvr-day-bg:#f1f5f9;--luvr-day-ink:#475569}
+[data-luvr-code="DOWNTIME"]{--luvr-day-bg:#fef3c7;--luvr-day-ink:#92400e}
+[data-luvr-code="DISMISSED"]{--luvr-day-bg:#ede9fe;--luvr-day-ink:#5b21b6}
+.luvr-color-sick{--luvr-day-bg:#fce7f3;--luvr-day-ink:#9d174d}
+.luvr-color-review{--luvr-day-bg:#fee2e2;--luvr-day-ink:#991b1b}
+:is(#luvrMonthPage,#luvrCalendarPage) .luvr-color-manual{box-shadow:inset 0 -3px #7c3aed}
+#luvrMonthPage .luvr-colored-day .luvr-month-day{background:transparent;color:inherit;font-weight:600}
+#luvrMonthPage .luvr-colored-day .luvr-month-day:hover{background:rgb(255 255 255 / 45%)}
+#luvrCalendarPage .luvr-colored-day{text-align:center;font-weight:600}
+.luvr-color-legend{display:flex;flex-wrap:wrap;gap:6px 10px;margin:10px 0 14px;font-size:12px}
+.luvr-color-key{display:inline-flex;align-items:center;padding:5px 9px;border-radius:5px;border:1px solid rgb(15 23 42 / 10%)}

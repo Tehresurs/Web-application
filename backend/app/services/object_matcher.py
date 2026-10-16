@@ -31,6 +31,8 @@ def calculate_similarity(name_1: str, name_2: str) -> float:
 
 def get_all_objects():
     with get_connection() as conn:
+        from app.repositories import construction_identity as identity
+        if identity.enabled(conn):return identity.directory(conn)
         with conn.cursor() as cursor:
             cursor.execute(
                 """
@@ -54,6 +56,8 @@ def get_all_objects():
 
 def match_object(object_name: str):
     objects = get_all_objects()
+    if objects and 'entity_id' in objects[0]:
+        with get_connection() as conn:return _match_entity(conn,object_name)
     normalized_word_name = normalize_object_name(object_name)
 
     for obj in objects:
@@ -128,3 +132,27 @@ def subobject_result(item, source, match_source):
             "object": {"id": item["object_id"], "name": item["object_name"]},
             "subobject": item, "object_id": item["object_id"], "object_name": item["object_name"],
             "subobject_id": item["id"], "subobject_name": item["name"]}
+
+
+def _match_entity(conn,object_name):
+    from app.repositories import construction_identity as identity
+    entities=[r for r in identity.directory(conn) if r['is_active']]
+    exact=[r for r in entities if normalize_object_name(r['name'])==normalize_object_name(object_name)]
+    source='entity_exact'
+    if not exact:
+        for kind in ('object','subobject'):
+            alias=resolve_value_alias(kind,object_name) if object_name else None
+            if alias:
+                key='legacy_object_id' if kind=='object' else 'legacy_subobject_id'
+                exact=[r for r in entities if r[key]==alias['target_id']]
+                if exact:source='entity_alias';break
+    def choice(row):
+        e=identity.resolve(conn,entity_id=row['entity_id'])
+        return dict(entity_id=e['entity_id'],object_id=None,subobject_id=None,
+            object=dict(id=None,name=e['name'],entity_id=e['entity_id']),
+            current_hierarchy=e,object_name=e['name'])
+    if len(exact)==1:return dict(status='found',match_source=source,candidates=[],**choice(exact[0]))
+    candidates=[dict(**choice(e),similarity=calculate_similarity(object_name,e['name'])) for e in entities
+                if calculate_similarity(object_name,e['name'])>=SIMILARITY_THRESHOLD]
+    candidates.sort(key=lambda r:(-r['similarity'],r['entity_id']))
+    return dict(status='similar' if candidates else 'new',object=None,candidates=candidates[:5],new_object=dict(name=object_name))

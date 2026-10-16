@@ -59,7 +59,7 @@ class ReferenceDatabaseTests(unittest.TestCase):
             INSERT INTO object_categories VALUES (1,'Категория',NULL,1,TRUE);
             INSERT INTO employee_assignments VALUES (1,1,1,1,1);
         """)
-        for name in ("001_daily_control_results.sql", "002_subobjects_aliases.sql", "003_control_item_unique.sql", "004_subcontractor.sql", "005_luvr_directories.sql", "006_luvr_history.sql"):
+        for name in ("001_daily_control_results.sql", "002_subobjects_aliases.sql", "003_control_item_unique.sql", "004_subcontractor.sql", "005_luvr_directories.sql", "006_luvr_history.sql", "013_employee_email.sql", "014_position_report_descriptions.sql", "017_position_requires_daily_report.sql", "021_position_planned_count.sql", "022_position_equipment.sql"):
             self.conn.execute((Path(__file__).resolve().parents[1] / "app/database/migrations" / name).read_text(encoding="utf-8"))
         self.conn.execute("""INSERT INTO daily_control_results
             (report_date,employee_id,object_id,po_id,category_id,source_file,source_sha256)
@@ -70,7 +70,7 @@ class ReferenceDatabaseTests(unittest.TestCase):
             with self.conn.transaction():
                 yield self.conn
 
-        for module in ("subobjects", "value_aliases", "employees", "objects", "assignments", "daily_control"):
+        for module in ("subobjects", "value_aliases", "employees", "objects", "assignments", "daily_control", "object_archive"):
             mock = patch(f"app.repositories.{module}.get_connection", connection)
             mock.start()
             self.addCleanup(mock.stop)
@@ -230,7 +230,10 @@ class ReferenceDatabaseTests(unittest.TestCase):
         self.assertEqual(len(body["items"]),2)
 
     def test_existing_objects_api(self):
-        self.assertEqual(http_request("GET","/api/objects"),(200,{"status":"ok","items":[{"id":1,"name":"Объект А"},{"id":2,"name":"Объект Б"}]}))
+        status,body=http_request("GET","/api/objects")
+        self.assertEqual(status,200)
+        self.assertEqual([{k:i[k] for k in ('id','name')} for i in body['items']],[{"id":1,"name":"Объект А"},{"id":2,"name":"Объект Б"}])
+        self.assertTrue(all(not i['is_archived'] and i['activity_status']=='ACTIVE' for i in body['items']))
 
     def test_existing_po_api(self):
         self.assertEqual(http_request("GET","/api/po-types")[1]["items"][0],{"id":1,"name":"ПО А"})

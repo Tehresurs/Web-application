@@ -10,7 +10,7 @@ MESSAGES={
     'MOVEMENT_SEQUENCE_WARNING':'Подряд записаны одинаковые события. Проверьте историю перемещений.',
     'MULTIPLE_MOVEMENTS_DAY':'В этот день несколько событий: значение дня требует проверки.',
     'SIMULTANEOUS_MOVEMENTS':'Заезд и выезд имеют одинаковое время; последующее состояние неизвестно.',
-    'RAIL_SOURCE_MISSING':'У ЖД-заезда нет подтверждённого билета: дни поездки определить нельзя.',
+    'RAIL_SOURCE_MISSING':'У ЖД-перемещения нет подтверждённого билета: дни поездки определить нельзя.',
     'RAIL_SOURCE_CONFLICT':'Данные ЖД-билета противоречат событию; требуется проверка.',
     'RAIL_TRAVEL_CONFLICT':'День поездки пересекается с другим событием, поездкой или состоянием на вахте.',
     'SICK_OVERRIDE_CONFLICT':'На день болезни есть ручная корректировка. Итог пустой, корректировка сохранена.',
@@ -33,7 +33,27 @@ def warning(code, ids=()):
 class CalendarTimeline:
     def __init__(self, inputs):
         self.inputs=inputs
-        self.movements=sorted(inputs['movements'],key=lambda m:(m['event_datetime'],m['id']))
+        # Imported history may already contain the same rail event before its
+        # ticket is confirmed. Prefer its confirmed counterpart without deleting
+        # history or merging distinct movements/trips.
+        def rail_event_key(m):
+            station=lambda value:' '.join((value or '').split()).casefold()
+            return (m.get('employee_id',inputs.get('employee_id')),m['movement_type'],
+                    m['event_datetime'],station(m.get('departure_station') or m.get('ticket_origin')),
+                    station(m.get('arrival_station') or m.get('ticket_destination')))
+        confirmed={}
+        for m in inputs['movements']:
+            if m['transport_type']=='RAIL' and m.get('ticket_id'):
+                key=rail_event_key(m)
+                confirmed.setdefault(key,[]).append(m)
+        movements=[]
+        for m in inputs['movements']:
+            key=rail_event_key(m)
+            if (m['transport_type']=='RAIL' and not m.get('ticket_id')
+                    and key[3] and key[4] and len(confirmed.get(key,[]))==1):
+                continue
+            movements.append(m)
+        self.movements=sorted(movements,key=lambda m:(m['event_datetime'],m['id']))
         self.dates=[m['event_datetime'].date() for m in self.movements]
         self.states={};self.notes={m['id']:[] for m in self.movements};self.trips=[]
         previous=None
@@ -47,13 +67,21 @@ class CalendarTimeline:
                 if len(types)>1:self.notes[mid].append(warning('SIMULTANEOUS_MOVEMENTS',[m['id'] for m in events]))
                 previous=movement
         for m in self.movements:
-            if m['transport_type']!='RAIL' or m['movement_type']!='ARRIVAL':continue
+            if m['transport_type']!='RAIL' or m['movement_type'] not in ('ARRIVAL','DEPARTURE'):continue
             if not m.get('ticket_id'):
                 self.notes[m['id']].append(warning('RAIL_SOURCE_MISSING',[m['id']]))
                 continue
             start,end=m.get('ticket_departure'),m.get('ticket_arrival')
             station=lambda value:' '.join((value or '').split()).casefold()
-            if (not start or not end or end!=m['event_datetime'] or start.date()>end.date()
+            if m['movement_type']=='DEPARTURE':
+                if (not start or not end or start!=m['event_datetime'] or end<start
+                        or station(m.get('ticket_origin'))!='салым'
+                        or not station(m.get('ticket_destination')) or station(m.get('ticket_destination'))=='салым'):
+                    self.notes[m['id']].append(warning('RAIL_SOURCE_CONFLICT',[m['id']]))
+                    continue
+                self.trips.append((start.date(),end.date(),m))
+                continue
+            if (not start or not end or end!=m['event_datetime'] or end<start
                     or station(m.get('ticket_destination'))!='салым'
                     or not station(m.get('ticket_origin')) or station(m.get('ticket_origin'))=='салым'):
                 self.notes[m['id']].append(warning('RAIL_SOURCE_CONFLICT',[m['id']]))
@@ -67,7 +95,8 @@ class CalendarTimeline:
         index=bisect_right(self.dates,target)-1
         latest=self.movements[index] if index>=0 else None
         events=[m for m in self.movements if m['event_datetime'].date()==target] if calculated else []
-        trips=[m for start,end,m in self.trips if start<=target<end] if calculated else []
+        trips=[m for start,end,m in self.trips
+               if (start<target<=end if m['movement_type']=='DEPARTURE' else start<=target<end)] if calculated else []
         state=self.states[latest['id']] if calculated and latest else 'UNKNOWN'
         auto='EMPTY';source='UNKNOWN';status='UNKNOWN';ids=[];notes=[]
         if mode=='FIVE_TWO':
@@ -92,7 +121,12 @@ class CalendarTimeline:
                 ids=sorted(set(ids+[m['id'] for m in trips]))
                 if events or len(trips)>1 or state=='ON_SHIFT':
                     auto='EMPTY';source='UNKNOWN';status='NEEDS_REVIEW';notes.append(warning('RAIL_TRAVEL_CONFLICT',ids))
-                else:auto='TRAVEL';source='RAIL_TRAVEL';status='CALCULATED'
+                else:
+                    # Clock thresholds apply to site movements only. Every other
+                    # date covered by the ticket is travel, in either direction.
+                    # Same-date trips retain the movement event's priority above.
+                    auto='TRAVEL'
+                    source='RAIL_TRAVEL';status='CALCULATED'
             if events and any(n['code']=='RAIL_SOURCE_CONFLICT' for n in notes):
                 auto='EMPTY';source='UNKNOWN';status='NEEDS_REVIEW'
         sick=any(s['date_from']<=target and (s['date_to'] is None or target<=s['date_to']) for s in self.inputs['sick_periods'])

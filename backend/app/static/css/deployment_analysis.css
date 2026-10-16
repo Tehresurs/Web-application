@@ -1,0 +1,23 @@
+#deploymentPage[data-tab="analysis"] > .deployment-toolbar > :not(h2),
+#deploymentPage[data-tab="analysis"] > #deploymentStatus,
+#deploymentPage[data-tab="analysis"] > #deploymentWarnings,
+#deploymentPage[data-tab="analysis"] > #deploymentReport {display:none!important}
+#deploymentAnalysis[hidden] {display:none!important}
+#deploymentAnalysis .da-controls {display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:12px 0}
+#deploymentAnalysis .ui-card {padding:18px;margin:12px 0;min-width:0}
+#deploymentAnalysis h3 {color:#174765;margin:0 0 14px}
+#deploymentAnalysis .da-metrics {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+#deploymentAnalysis .da-metric {padding:14px;border:1px solid #d6e2ed;border-radius:6px;background:#f5f9fc}
+#deploymentAnalysis .da-metric strong {display:block;font-size:24px;color:#075783;margin:8px 0}
+#deploymentAnalysis .da-metric small {display:block;color:#516780}
+#deploymentAnalysis table {min-width:650px;table-layout:auto}
+#deploymentAnalysis th {width:auto!important}
+#deploymentAnalysis th:first-child {width:45%!important}
+#deploymentAnalysis td:first-child {text-align:left}
+#deploymentAnalysis .da-chart {overflow-x:auto}
+#deploymentAnalysis svg {width:100%;min-width:600px;height:auto;max-height:300px}
+#deploymentAnalysis .da-legend {display:flex;gap:15px;flex-wrap:wrap;margin:12px 0}
+#deploymentAnalysis select {max-width:100%;padding:8px;border:1px solid #d6e2ed;border-radius:5px}
+#deploymentAnalysis .da-note {color:#516780;line-height:1.5}
+#deploymentAnalysis details {padding:10px;background:#fff8ed;border:1px solid #efcd91;border-radius:6px;margin:12px 0}
+@media(max-width:1000px){#deploymentAnalysis .da-metrics {grid-template-columns:repeat(2,minmax(0,1fr))}}

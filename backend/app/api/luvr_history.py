@@ -98,7 +98,7 @@ class StoredRecord(BaseModel):
 
 
 class Movement(StoredRecord, MovementRequest):
-    pass
+    confirmed_ticket_id: int | None = None
 
 
 class SickPeriod(StoredRecord, SickPeriodRequest):

@@ -1,0 +1,24 @@
+.clean-review-app .navigation a{display:block;text-decoration:none}
+.clean-upload-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.clean-file-label{font-weight:600;font-size:13px}
+.clean-upload-row input[type=file]{flex:1;min-width:220px;border:1px solid #d5dbdf;border-radius:7px;padding:9px;background:#fff}
+.review-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.review-field{min-width:0;border:1px solid #e5eaed;border-radius:9px;padding:16px}
+.review-field>label{display:block;font-weight:650;margin-bottom:11px}
+.review-field select,.review-field input{width:100%;border:1px solid #ccd5da;border-radius:7px;background:#fff;padding:10px 11px;font:inherit}
+.review-field select:focus,.review-field input:focus{outline:2px solid #b9e4ec;border-color:#078eae}
+.review-field small{display:block;color:#737e84;margin-top:8px;min-height:16px}
+.review-field small.needs-review{color:#9b6812}
+.review-field small.match-ok{color:#247653}
+.source-value{overflow-wrap:anywhere}
+.review-errors{border:1px solid #f0d9a2;background:#fff8e7;color:#72551d;border-radius:8px;padding:14px 17px;margin-bottom:18px}
+.review-errors ul{margin:8px 0 0;padding-left:20px}
+.review-acknowledgement{display:flex;gap:10px;align-items:flex-start;margin-top:20px;padding:14px;border:1px solid #dce7ea;border-radius:8px;background:#f7fafb;font-size:13px}
+.review-acknowledgement input{margin-top:2px}
+.clean-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+.confirmed-panel{margin-top:22px;padding:18px;border:1px solid #b8dfcb;border-radius:9px;background:#eff9f3}
+.confirmed-panel h3{margin:0 0 7px;color:#247653}
+.confirmed-panel p{margin:0 0 15px;color:#567465;font-size:13px}
+.confirmed-panel dl{display:grid;grid-template-columns:minmax(130px,190px) 1fr;gap:9px 16px;margin:0;font-size:13px}
+.confirmed-panel dt{color:#587366}.confirmed-panel dd{margin:0;font-weight:600;overflow-wrap:anywhere}
+@media(max-width:700px){.review-grid{grid-template-columns:1fr}.clean-actions{flex-direction:column-reverse}.clean-actions button{width:100%}.confirmed-panel dl{grid-template-columns:1fr;gap:4px}.confirmed-panel dd{margin-bottom:8px}}

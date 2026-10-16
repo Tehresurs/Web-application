@@ -76,7 +76,19 @@ def get_history(kind, employee_id, date_from=None, date_to=None):
         _employee(cursor, employee_id)
         cursor.execute(sql.SQL("SELECT * FROM {} WHERE {} ORDER BY {},id").format(
             sql.Identifier(table), sql.SQL(" AND ").join(clauses), sql.Identifier(order)), params)
-        return cursor.fetchall()
+        records = cursor.fetchall()
+        if kind == "movements":
+            # Read-only provenance for the employee card; never infer confirmation
+            # from transport_type or a source filename.
+            cursor.execute("SELECT to_regclass('rail_tickets') AS relation")
+            if cursor.fetchone()['relation']:
+                cursor.execute("""SELECT movement_id, id FROM rail_tickets
+                    WHERE employee_id=%s AND status='CONFIRMED' AND movement_id IS NOT NULL
+                    ORDER BY id""", (employee_id,))
+                tickets = {row['movement_id']: row['id'] for row in cursor.fetchall()}
+                for record in records:
+                    record['confirmed_ticket_id'] = tickets.get(record['id'])
+        return records
 
 
 def create_history(kind, employee_id, **values):

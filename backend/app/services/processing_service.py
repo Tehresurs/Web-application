@@ -119,6 +119,8 @@ def prepare_report(document: dict) -> dict:
     result["subobject_id"] = subobject["id"] if subobject else None
     result["subobject_name"] = subobject["name"] if subobject else None
     result["resolved_subobject"] = subobject
+    if object_match.get('entity_id') is not None:
+        result.update(entity_id=object_match['entity_id'],current_hierarchy=object_match.get('current_hierarchy'))
     if subobject:
         result["resolved_object"] = database_object
         result["object_match_source"] = object_match["match_source"]

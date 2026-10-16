@@ -17,8 +17,14 @@ class RequestModel(BaseModel):
 
 
 class CreateSubobjectRequest(RequestModel):
-    object_id: int = Field(gt=0)
+    object_id: int | None = Field(default=None,gt=0)
+    parent_entity_id: int | None = Field(default=None,gt=0)
     name: str = Field(min_length=1)
+
+    @model_validator(mode='after')
+    def parent_required(self):
+        if self.object_id is None and self.parent_entity_id is None:raise ValueError('Укажите родителя')
+        return self
 
     @field_validator("name")
     @classmethod
@@ -73,8 +79,8 @@ class SubobjectMovePreview(BaseModel):
     subobject_id: int
     name: str
     is_active: bool
-    old_object_id: int
-    old_object_name: str
+    old_object_id: int | None
+    old_object_name: str | None
     object_id: int
     object_name: str
     linked_facts: int
@@ -89,11 +95,17 @@ class SubobjectMovePreviewResponse(BaseModel):
 
 
 class Subobject(BaseModel):
-    id: int
-    object_id: int
+    entity_id: int | None = None
+    current_hierarchy: dict | None = None
+    id: int | None
+    object_id: int | None
     name: str
     is_active: bool
-    object_name: str
+    object_name: str | None
+    is_archived: bool = False
+    archived_at: str | None = None
+    activity_status: str = "ACTIVE"
+    parent_is_archived: bool = False
 
 
 class ValueAlias(BaseModel):
@@ -161,23 +173,28 @@ def _response(operation, *args, key="item", **kwargs):
                             content={"status": "error", "message": str(error)})
 
 
-@router.get("/subobjects", response_model=SubobjectsResponse, summary="Активные подобъекты")
-def list_subobjects(object_id: int | None = Query(default=None, gt=0), include_inactive: bool = False):
-    return _response(subobjects.get_subobjects, object_id, include_inactive, key="items")
+@router.get("/subobjects", response_model=SubobjectsResponse, response_model_exclude_unset=True, summary="Активные подобъекты")
+def list_subobjects(object_id: int | None = Query(default=None, gt=0), include_inactive: bool = False, archive: Literal["active", "archived", "all"] = "all", parent_entity_id: int | None = Query(default=None,gt=0)):
+    return _response(subobjects.get_subobjects, object_id, include_inactive, archive, parent_entity_id, key="items")
 
 
-@router.get("/subobjects/{subobject_id}", response_model=SubobjectResponse, summary="Подобъект по ID, включая неактивный")
+@router.get("/subobjects/{subobject_id}", response_model=SubobjectResponse, response_model_exclude_unset=True, summary="Подобъект по ID, включая неактивный")
 def get_subobject(subobject_id: int):
     return _response(require_subobject, subobject_id)
 
 
-@router.post("/subobjects", response_model=SubobjectResponse, summary="Создать подобъект")
+@router.post("/subobjects", response_model=SubobjectResponse, response_model_exclude_unset=True, summary="Создать подобъект")
 def create_subobject(payload: CreateSubobjectRequest):
     return _response(subobjects.create_subobject, **payload.model_dump())
 
 
-@router.patch("/subobjects/{subobject_id}", response_model=SubobjectResponse, summary="Переименовать или деактивировать подобъект")
-def update_subobject(subobject_id: int, payload: UpdateSubobjectRequest):
+@router.patch("/subobjects/{subobject_id}", response_model=SubobjectResponse, response_model_exclude_unset=True, summary="Переименовать или деактивировать подобъект")
+def update_subobject(subobject_id: int, payload: UpdateSubobjectRequest, id_type: Literal['legacy','entity']='legacy'):
+    if id_type == 'entity':
+        from app.api.construction_identity import change_entity
+        from fastapi.encoders import jsonable_encoder
+        result = _response(change_entity,subobject_id,**payload.model_dump(exclude_unset=True))
+        return result if isinstance(result,JSONResponse) else JSONResponse(content=jsonable_encoder(result))
     return _response(subobjects.update_subobject, subobject_id, **payload.model_dump(exclude_unset=True))
 
 
@@ -192,7 +209,7 @@ def check_subobject_move(subobject_id: int, payload: MoveSubobjectRequest):
     return _response(subobjects.preview_subobject_move, subobject_id, **payload.model_dump())
 
 
-@router.patch("/subobjects/{subobject_id}/move", response_model=SubobjectMoveResponse,
+@router.patch("/subobjects/{subobject_id}/move", response_model=SubobjectMoveResponse, response_model_exclude_unset=True,
               summary="Атомарно перенести подобъект и связанные факты контроля")
 def transfer_subobject(subobject_id: int, payload: ConfirmSubobjectMoveRequest):
     return _response(subobjects.move_subobject, subobject_id, key=None, **payload.model_dump())

@@ -72,9 +72,9 @@ def get_po_types():
         with conn.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT id, name
-                FROM po_types
-                ORDER BY name;
+                SELECT p.id, p.name, p.default_category_id, c.name
+                FROM po_types p LEFT JOIN object_categories c ON c.id=p.default_category_id
+                ORDER BY p.name;
                 """
             )
 
@@ -84,26 +84,24 @@ def get_po_types():
         {
             "id": row[0],
             "name": row[1],
+            "default_category_id": row[2],
+            "default_category_name": row[3],
         }
         for row in rows
     ]
 
 
 
-def get_objects():
-    """Возвращает все объекты строительства."""
-    with get_connection() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT id, name
-                FROM construction_objects
-                ORDER BY name;
-                """
-            )
-            rows = cursor.fetchall()
-
-    return [{"id": row[0], "name": row[1]} for row in rows]
+def get_objects(archive="all"):
+    with get_connection() as conn, conn.cursor() as cursor:
+        from app.repositories import construction_identity as identity
+        if identity.enabled(conn):return identity.catalog(conn,archive=archive,include_inactive=True)
+        cursor.execute("""SELECT id,name,COALESCE((to_jsonb(o)->>'is_archived')::boolean,false),
+            to_jsonb(o)->>'archived_at',COALESCE(to_jsonb(o)->>'activity_status','ACTIVE')
+            FROM construction_objects o ORDER BY name,id""")
+        items=[dict(zip(('id','name','is_archived','archived_at','activity_status'),r)) for r in cursor.fetchall()]
+        from app.repositories.construction_identity import enrich
+        return enrich(conn,[i for i in items if archive=='all' or i['is_archived']==(archive=='archived')])
 
 
 def update_object(object_id: int, name: str):
@@ -113,6 +111,8 @@ def update_object(object_id: int, name: str):
         raise ValueError("Наименование объекта не заполнено")
 
     with get_connection() as conn:
+        from app.repositories import construction_identity as identity
+        identity.check_catalog_name(conn, clean_name, object_id=object_id)
         with conn.cursor() as cursor:
             cursor.execute(
                 "SELECT id FROM construction_objects WHERE id = %s;",
@@ -145,50 +145,14 @@ def update_object(object_id: int, name: str):
                 (clean_name, object_id),
             )
             row = cursor.fetchone()
-
-    return {"id": row[0], "name": row[1]}
+        return identity.enrich(conn, [{"id": row[0], "name": row[1]}])[0]
 
 
 def delete_object(object_id: int):
-    """Удаляет объект, если он не используется в назначениях сотрудников."""
-    with get_connection() as conn:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                "SELECT id, name FROM construction_objects WHERE id = %s;",
-                (object_id,),
-            )
-            row = cursor.fetchone()
-            if row is None:
-                raise ValueError("Объект не найден")
+    from app.repositories.object_archive import change
+    change('objects', object_id, is_archived=True)
+    return {"id": object_id, "deleted": False, "archived": True}
 
-            cursor.execute(
-                """
-                SELECT COUNT(*)
-                FROM employee_assignments
-                WHERE object_id = %s;
-                """,
-                (object_id,),
-            )
-            assignment_count = cursor.fetchone()[0]
-            if assignment_count > 0:
-                raise ValueError(
-                    f'Объект "{row[1]}" используется в '
-                    f'{assignment_count} назначениях сотрудников '
-                    f'и не может быть удалён.'
-                )
-
-            cursor.execute("SELECT 1 FROM construction_subobjects WHERE object_id=%s LIMIT 1", (object_id,))
-            if cursor.fetchone():
-                raise ValueError("У объекта есть подобъекты. Сначала перенесите их к другому объекту.")
-            cursor.execute("SELECT 1 FROM daily_control_results WHERE object_id=%s LIMIT 1", (object_id,))
-            if cursor.fetchone():
-                raise ValueError("Объект используется в Журнале контроля и не может быть удалён.")
-            cursor.execute(
-                "DELETE FROM construction_objects WHERE id = %s;",
-                (object_id,),
-            )
-
-    return {"id": object_id, "deleted": True}
 
 def create_object(name: str):
     """Создаёт объект строительства."""
@@ -199,6 +163,8 @@ def create_object(name: str):
         raise ValueError("Наименование объекта не заполнено")
 
     with get_connection() as conn:
+        from app.repositories import construction_identity as identity
+        identity.check_catalog_name(conn, clean_name)
         with conn.cursor() as cursor:
             cursor.execute(
                 """
@@ -227,11 +193,7 @@ def create_object(name: str):
             )
 
             row = cursor.fetchone()
-
-    return {
-        "id": row[0],
-        "name": row[1],
-    }
+        return identity.enrich(conn, [{"id": row[0], "name": row[1]}])[0]
 
 def create_subcategory(parent_id: int, name: str):
     clean_name = " ".join(name.split())
@@ -488,7 +450,7 @@ def delete_subcategory(category_id: int):
     }
 
 
-def create_po_type(name: str):
+def create_po_type(name: str, default_category_id=None):
     clean_name = " ".join(name.split())
 
     if not clean_name:
@@ -496,6 +458,9 @@ def create_po_type(name: str):
 
     with get_connection() as conn:
         with conn.cursor() as cursor:
+            if default_category_id is not ... and default_category_id is not None:
+                cursor.execute('SELECT id FROM object_categories WHERE id=%s FOR SHARE',(default_category_id,))
+                if cursor.fetchone() is None:raise ValueError('Категория не найдена')
             cursor.execute(
                 """
                 SELECT id
@@ -510,11 +475,11 @@ def create_po_type(name: str):
 
             cursor.execute(
                 """
-                INSERT INTO po_types (name)
-                VALUES (%s)
-                RETURNING id, name;
+                INSERT INTO po_types (name,default_category_id)
+                VALUES (%s,%s)
+                RETURNING id, name, default_category_id;
                 """,
-                (clean_name,),
+                (clean_name,default_category_id),
             )
 
             row = cursor.fetchone()
@@ -522,10 +487,11 @@ def create_po_type(name: str):
     return {
         "id": row[0],
         "name": row[1],
+        "default_category_id": row[2],
     }
 
 
-def rename_po_type(po_id: int, name: str):
+def rename_po_type(po_id: int, name: str, default_category_id=...):
     clean_name = " ".join(name.split())
 
     if not clean_name:
@@ -533,6 +499,9 @@ def rename_po_type(po_id: int, name: str):
 
     with get_connection() as conn:
         with conn.cursor() as cursor:
+            if default_category_id is not ... and default_category_id is not None:
+                cursor.execute('SELECT id FROM object_categories WHERE id=%s FOR SHARE',(default_category_id,))
+                if cursor.fetchone() is None:raise ValueError('Категория не найдена')
             cursor.execute(
                 """
                 SELECT id
@@ -561,11 +530,11 @@ def rename_po_type(po_id: int, name: str):
             cursor.execute(
                 """
                 UPDATE po_types
-                SET name = %s
+                SET name = %s, default_category_id=CASE WHEN %s THEN default_category_id ELSE %s END
                 WHERE id = %s
-                RETURNING id, name;
+                RETURNING id, name, default_category_id;
                 """,
-                (clean_name, po_id),
+                (clean_name,default_category_id is ...,None if default_category_id is ... else default_category_id,po_id),
             )
 
             row = cursor.fetchone()
@@ -573,6 +542,7 @@ def rename_po_type(po_id: int, name: str):
     return {
         "id": row[0],
         "name": row[1],
+        "default_category_id": row[2],
     }
 
 

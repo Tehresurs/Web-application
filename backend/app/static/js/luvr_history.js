@@ -85,11 +85,11 @@ function openEmployeeLuvrHistory(employeeId) {
     employeeLuvrController.open(employeeId);
 }
 
-function renderEmployeeLuvrHistory(body, state) {
+function renderEmployeeLuvrHistory(body, state, kinds=LUVR_HISTORY_KINDS) {
     body.replaceChildren();
     if(state.busy){body.textContent='Загрузка истории…';return;}
     const titles={'movements':'История перемещений','sick-periods':'Периоды болезни','duration-exceptions':'Согласованные исключения'};
-    for(const kind of LUVR_HISTORY_KINDS){
+    for(const kind of kinds){
         const section=document.createElement('section');section.className='luvr-history-section';section.dataset.kind=kind;
         const heading=document.createElement('h4');heading.textContent=titles[kind];section.append(heading);
         const add=document.createElement('button');add.type='button';add.className='secondary-button';add.textContent=kind==='movements'?'+ Добавить самостоятельный заезд/выезд':'+ Добавить';
@@ -108,7 +108,7 @@ function renderEmployeeLuvrHistory(body, state) {
                 const rail=kind==='movements'&&item.transport_type==='RAIL',epoch=state.epoch;
                 remove.disabled=true;
                 if(!(rail?await confirmRailMovementDelete():confirm('Удалить эту запись истории?'))||epoch!==state.epoch){remove.disabled=false;return;}
-                document.getElementById('employeeLuvrError').hidden=true;
+                (state.errorElement||document.getElementById('employeeLuvrError')).hidden=true;
                 await state.mutate(kind,'DELETE',null,item.id,rail);remove.disabled=false;
             };row.append(remove);list.append(row);
         }
@@ -144,7 +144,7 @@ function editEmployeeLuvrRecord(section, kind, item, state) {
     const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Отмена';cancel.onclick=()=>form.remove();form.append(cancel);
     form.onsubmit=async event=>{
         event.preventDefault();if(state.busy)return;
-        const error=document.getElementById('employeeLuvrError');error.hidden=true;
+        const error=state.errorElement||document.getElementById('employeeLuvrError');error.hidden=true;
         try{
             const payload=luvrHistoryPayload(kind,Object.fromEntries(new FormData(form)));
             save.disabled=true;cancel.disabled=true;

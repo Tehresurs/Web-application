@@ -134,14 +134,18 @@ class SubobjectMoveTests(unittest.TestCase):
         self.assertEqual(http_request("PATCH", f'/api/subobjects/{child["id"]}', {"object_id":2})[0],422)
 
     def test_used_child_cannot_be_deleted_and_parent_delete_is_guarded(self):
+        from app.database.migrate_object_archive import apply_migration
+        apply_migration(self.conn)
         child = self.child(); self.link(child)
         self.assertEqual(http_request("DELETE", f'/api/subobjects/{child["id"]}')[0],405)
         with self.assertRaises(psycopg.IntegrityError), self.conn.transaction():
             self.conn.execute("DELETE FROM construction_subobjects WHERE id=%s",(child["id"],))
         self.child(parent=2)
         status, body = http_request("DELETE", "/api/objects/2")
-        self.assertEqual(status,400)
-        self.assertIn("подобъекты",body["message"])
+        self.assertEqual(status,200)
+        self.assertTrue(body['archived'])
+        self.assertFalse(body['deleted'])
+        self.assertTrue(self.conn.execute('SELECT is_archived FROM construction_objects WHERE id=2').fetchone()[0])
 
     def test_openapi_move_endpoints(self):
         status, schema = http_request("GET", "/openapi.json")

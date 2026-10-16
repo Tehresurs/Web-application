@@ -4,7 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Техресурс - Обработка отчетов</title>
-    <link rel="stylesheet" href="/static/css/main.css?v=20261003-table2">
+    <link rel="stylesheet" href="/static/css/main.css?v=20261012-inline-count">
+<link rel="stylesheet" href="/static/css/ui_components.css?v=20261004-absence">
+<link rel="stylesheet" href="/static/css/employee_visuals.css?v=20261004-visual">
+<link rel="stylesheet" href="/static/css/employee_card.css?v=20261012-employee-sections">
+<link rel="stylesheet" href="/static/css/production_matrix.css?v=20261012-employee-sections">
+<link rel="stylesheet" href="/static/css/luvr_workspace.css?v=20261015-name-buttons">
+<link rel="stylesheet" href="/static/css/deployment.css?v=1">
+<link rel="stylesheet" href="/static/css/deployment_analysis.css?v=1">
+<link rel="stylesheet" href="/static/css/directory_workspace.css?v=20261015-long-names">
 </head>
 <body>
 <div class="app">
@@ -20,6 +28,7 @@
             <button class="nav-item" id="crewsNavButton"><span>▱</span>Экипажи</button>
             <button class="nav-item" id="journalNavButton"><span>▤</span>Журнал контроля</button>
             <button class="nav-item" id="luvrNavButton"><span>▦</span>ЛУВР</button>
+            <button class="nav-item" id="deploymentNavButton"><span>▤</span>Расстановка</button>
             <button class="nav-item" id="logsNavButton"><span>≡</span>Логи</button><button class="nav-item"><span>⚙</span>Настройки</button>
         </nav>
         <div class="sidebar-footer"><strong>Техресурс</strong><br><small>Система контроля отчётов</small><div class="version">v 1.0.0</div></div>
@@ -27,17 +36,59 @@
 
     <main class="main">
         <header class="page-header">
-            <div><h1>Обработка отчетов</h1><p>Загрузка и проверка ежедневных Word-отчетов</p></div>
+            <div><div class="employee-default-page-title"><h1>Обработка отчетов</h1><p>Загрузка и проверка ежедневных Word-отчетов</p></div><div class="employee-only-page-title"><h1>Сотрудники</h1></div></div>
             <div class="header-meta"><div class="system-status"><span></span>Система готова</div><div class="header-date" id="headerDate">—</div><div class="header-user">◉ Администратор⌄</div></div>
         </header>
 
         <section id="luvrNavigation" hidden aria-label="ЛУВР">
             <h2>ЛУВР</h2>
             <nav class="luvr-tabs" aria-label="Разделы ЛУВР">
-                <button type="button" id="railTicketsNavButton" class="secondary-button">ЖД-билеты</button>
+                <button type="button" id="railTicketsNavButton" class="secondary-button">Билеты</button>
                 <button type="button" id="luvrMonthNavButton" class="secondary-button">ЛУВР</button>
                 <button type="button" id="luvrCalendarNavButton" class="secondary-button">Календарь ЛУВР</button>
+                <button type="button" id="productionMatrixNavButton" class="secondary-button">Производственная матрица</button>
             </nav>
+        </section>
+        <section id="deploymentPage" hidden>
+            <header class="ui-card deployment-toolbar"><h2>Расстановка</h2>
+                <label>Дата отчёта <input type="date" id="deploymentDate" required></label>
+                <button type="button" class="ui-button action-blue" id="deploymentRefresh">Сформировать отчёт</button>
+                <label class="deployment-analysis-option"><input type="checkbox" id="deploymentIncludeAnalysis"> Включить вкладку «Анализ»</label>
+                <button type="button" class="ui-button" id="deploymentExport" disabled>Скачать Excel</button>
+            </header>
+            <nav class="deployment-tabs" aria-label="Вкладки расстановки">
+                <button type="button" id="deploymentReportTab" class="ui-button action-blue" aria-current="page">Отчёт-расстановка</button>
+                <button type="button" id="deploymentAnalysisTab" class="ui-button">Анализ расстановки</button>
+            </nav>
+            <p id="deploymentStatus" role="status" aria-live="polite"></p>
+            <div id="deploymentWarnings"></div>
+            <article id="deploymentReport" class="ui-card" hidden>
+                <div class="deployment-contract">Приложение № 21<br>к Договору № MOS/25/0008</div>
+                <h3>Отчет-расстановка специалистов строительного контроля<br>ООО «Техресурс» на объектах строительства ООО «СПД»</h3>
+                <p id="deploymentReportDate"></p>
+                <div class="deployment-scroll"><table><thead id="deploymentHead"></thead><tbody id="deploymentRows"></tbody></table></div>
+                <div id="deploymentTotals"></div>
+            </article>
+        </section>
+        <section id="productionMatrixPage" class="pm-view" hidden>
+            <header class="pm-toolbar ui-card ui-page-header">
+                <h2>ЛУВР — Производственная матрица</h2>
+                <div class="pm-period">
+                    <button type="button" id="pmPrevious" aria-label="Предыдущий месяц">‹</button>
+                    <label>Месяц <input type="month" id="pmMonth" min="1900-01" max="9999-12"></label>
+                    <button type="button" id="pmNext" aria-label="Следующий месяц">›</button>
+                </div>
+                <button type="button" class="ui-button action-blue" id="pmRefresh">Обновить</button>
+                <button type="button" class="ui-button action-blue" id="pmOpenLuvr">Открыть ЛУВР</button>
+                <button type="button" class="ui-button action-green" id="pmOpenReports">Обработать отчёты</button>
+            </header>
+            <div class="pm-legend"><span class="pm-state-FULL">1 — рабочий день</span><span class="pm-state-HALF">0,5 — половина дня</span><span>Д — в пути</span><span>МВ — межвахта</span><span>П — простой</span><span class="pm-source-FACT">Ф — факт</span><span class="pm-source-PLAN">Пл — план</span></div>
+            <p id="pmError" class="database-status error" role="alert" hidden></p>
+            <p id="pmStatus" role="status"></p>
+            <div class="pm-workspace">
+                <div class="pm-table-scroll" id="pmScroll"><table class="pm-table" id="pmTable" aria-label="Производственная матрица"></table></div>
+                <aside class="pm-details ui-card" id="pmDetails" aria-label="Детали дня" hidden></aside>
+            </div>
         </section>
         <div id="processingPage">
         <section class="card upload-card">
@@ -48,13 +99,13 @@
                     <h3>Папка с ежедневными отчетами</h3>
                     <p>Укажите папку, содержащую Word-отчёты (*.docx)</p>
                     <div class="folder-path-row">
-                        <input type="text" id="folderPath" class="folder-path" value="C:\Projects\excel-ai-agent\backend\input" placeholder="C:\Путь\к\папке\с\отчётами">
+                        <input type="text" id="folderPath" class="folder-path" value="C:\Projects\excel-ai-agent-8001\backend\input" placeholder="C:\Путь\к\папке\с\отчётами">
                         <button type="button" class="secondary-button" id="checkFolderButton">▰&nbsp; Выбрать папку</button>
                     </div>
                     <div class="folder-info-box"><div class="folder-info" id="folderInfo">Папка ещё не проверена</div><div class="last-check" id="lastCheck">Последняя проверка: —</div></div>
                 </div>
             </div>
-            <div class="actions"><button class="primary-button" id="parseButton" disabled>▶&nbsp; Запустить проверку</button></div>
+            <div class="actions"><button type="button" class="secondary-button" id="addReportFileButton">Добавить файл</button><button class="primary-button" id="parseButton" disabled>▶&nbsp; Запустить проверку</button></div><p id="addReportFileStatus" role="status"></p>
         </section>
 
         <section class="card results-card" id="results">
@@ -86,7 +137,7 @@
             </section>
         </section>
 
-        <section class="objects-page" id="objectsPage" hidden>
+        <section class="objects-page" id="objectsPage" data-identity-preview-enabled="{{ 'true' if test_mode else 'false' }}" hidden>
             <header class="page-header objects-page-header">
                 <div><h1>Объекты строительства</h1><p>Объекты, категории и производственные организации</p></div>
                 <button type="button" class="secondary-button" id="backToProcessingButton">← Обработка отчётов</button>
@@ -99,9 +150,25 @@
                 </div>
                 <div id="objectsPanel">
                     <div class="category-header">
-                        <div><h2>Объекты строительства</h2><p>Справочник объектов. Категории и ПО назначаются сотруднику отдельно.</p></div>
-                        <button type="button" class="primary-button" id="addDirectoryObjectButton">+ Добавить объект</button>
+                        <div><h2>Объекты строительства</h2>{% if not test_mode %}<p>Справочник объектов. Категории и ПО назначаются сотруднику отдельно.</p>{% endif %}</div>
+                        {% if test_mode %}<input type="search" class="ui-input object-header-search" id="objectSearchInput" placeholder="Поиск объектов..." aria-label="Поиск объекта или подобъекта">{% endif %}
+                        <button type="button" class="{% if test_mode %}ui-button ui-button-primary{% else %}primary-button{% endif %}" id="addDirectoryObjectButton">{% if test_mode %}+ Создать объект{% else %}+ Добавить объект{% endif %}</button>
                     </div>
+                    {% if test_mode %}
+                    <div class="object-view-tabs ui-tabs" role="tablist" aria-label="Тип объектов">
+                        <button type="button" class="object-view-tab ui-tab" role="tab" data-object-view="all" aria-selected="true">Все объекты</button>
+                        <button type="button" class="object-view-tab ui-tab" role="tab" data-object-view="standalone" aria-selected="false">Самостоятельные объекты</button>
+                        <button type="button" class="object-view-tab ui-tab" role="tab" data-object-view="children" aria-selected="false">Подобъекты</button>
+                        <button type="button" class="object-view-tab ui-tab" role="tab" data-object-view="archived" aria-selected="false">Архив</button>
+                    </div>
+                    <div class="contractor-toolbar employee-filters">
+                        <span id="objectCount"></span>
+                    </div>
+                    <div class="object-tree-filters object-tree-filters-compact">
+                        <label>Статус<select class="ui-input" id="objectStatusFilter"><option value="all">Любой</option><option value="active">Действующий</option><option value="inactive">Неактивный</option></select></label>
+                        <label>Сортировка<select class="ui-input" id="objectSort"><option value="asc">А–Я</option><option value="desc">Я–А</option><option value="id">По ID</option><option value="count">По подобъектам</option></select></label>
+                    </div>
+                    {% else %}
                     <div class="contractor-toolbar">
                         <input type="search" id="objectSearchInput" placeholder="Поиск объекта или подобъекта..." aria-label="Поиск объекта или подобъекта">
                         <span id="objectCount"></span>
@@ -109,9 +176,11 @@
                     <div class="object-tree-filters">
                         <label>Сортировка<select id="objectSort"><option value="asc">Наименование А–Я</option><option value="desc">Наименование Я–А</option><option value="id">ID</option><option value="count">Количество подобъектов</option></select></label>
                         <label>Объекты<select id="objectChildrenFilter"><option value="all">Все объекты</option><option value="with">С подобъектами</option><option value="without">Без подобъектов</option></select></label>
+                        <label>Архив<select id="objectArchiveFilter"><option value="active">Действующие</option><option value="archived">Архив</option><option value="all">Все</option></select></label>
                         <label>Подобъекты<select id="objectActivityFilter"><option value="active">Активные</option><option value="inactive">Неактивные</option><option value="all">Все</option></select></label>
                     </div>
-                    <div id="objectList" class="category-list"><div class="category-loading">Загрузка объектов...</div></div>
+                    {% endif %}
+                    <div id="objectList" class="{% if test_mode %}object-catalog-tree ui-stack{% else %}category-list{% endif %}"><div class="category-loading">Загрузка объектов...</div></div>
                 </div>
                 <div id="categoriesPanel" hidden>
                     <div class="category-header"><div><h2>Категории объектов</h2><p>Основные категории защищены. Подкатегории можно изменять внутри «Прочее».</p></div></div>
@@ -125,11 +194,45 @@
                     <div id="poList" class="category-list"><div class="category-loading">Загрузка ПО...</div></div>
                 </div>
             </section>
+            {% if clean_start %}
+            <section class="card clean-assignments-card" id="cleanAssignments">
+                <div class="category-header">
+                    <div><h2>Закрепления сотрудников</h2><p>Новые закрепления используют только стабильный entity_id.</p></div>
+                </div>
+                <div class="employee-filters">
+                    <label>Сотрудник<select class="ui-input" id="cleanAssignmentEmployee"><option value="">Выберите сотрудника</option></select></label>
+                    <span id="cleanAssignmentCount" aria-live="polite">Объектов: 0</span>
+                    <button type="button" class="ui-button ui-button-primary" id="cleanAssignmentAdd">+ Добавить закрепление</button>
+                </div>
+                <div id="cleanAssignmentList" class="employee-assignments-list"></div>
+                <div id="cleanAssignmentEditor" class="assignment-editor" hidden>
+                    <label class="form-label">Объект / подобъект<select class="ui-input" id="cleanAssignmentEntity"><option value="">Выберите объект</option></select></label>
+                    <label class="form-label">ПО<select class="ui-input" id="cleanAssignmentPo"><option value="">Выберите ПО</option></select></label>
+                    <label class="form-label">Категория<select class="ui-input" id="cleanAssignmentCategory"><option value="">Выберите категорию</option></select></label>
+                    <div class="assignment-editor-actions">
+                        <button type="button" class="secondary-button" id="cleanAssignmentCancel">Отмена</button>
+                        <button type="button" class="primary-button" id="cleanAssignmentSave">Добавить</button>
+                    </div>
+                    <div class="database-status error" id="cleanAssignmentError" role="alert" hidden></div>
+                </div>
+            </section>
+            {% endif %}
         </section>
 <section class="objects-page" id="employeesPage" hidden><header class="page-header objects-page-header"><div><h1>Сотрудники</h1><p>Сотрудники и справочник должностей</p></div><button type="button" class="secondary-button" id="backFromEmployeesButton">← Обработка отчётов</button></header><section class="card"><div class="object-tabs"><button type="button" class="object-tab active" id="employeesTab">Сотрудники</button><button type="button" class="object-tab" id="positionsTab">Должности</button></div><div id="employeesPanel">
-<div class="category-header"><div><h2>Сотрудники</h2><p>Справочник сотрудников, должностей и закрепления за экипажами.</p></div><button type="button" class="primary-button" id="addEmployeeButton">+ Добавить сотрудника</button></div>
-<div class="employee-toolbar"><label>Сотрудники <select id="employeeArchiveFilter"><option value="active">Действующие</option><option value="archived">Архив</option></select></label><input type="search" id="employeeSearchInput" placeholder="Поиск по ФИО, должности, телефону или экипажу..."><span id="employeeCount"></span></div>
-<div id="employeeList" class="employee-list"><div class="category-loading">Загрузка сотрудников...</div></div>
+<div class="employee-workspace">
+<section class="ui-card">
+<header class="ui-section-header"><h2>Сотрудники</h2><button type="button" class="ui-button ui-button-primary" id="addEmployeeButton">+ Добавить</button></header>
+<div class="employee-filters">
+<label class="employee-search">Поиск<input class="ui-input" type="search" id="employeeSearchInput" placeholder="ФИО / должность / телефон / № НРС"></label>
+<label>Список<select class="ui-input" id="employeeArchiveFilter"><option value="active">Вне архива</option><option value="archived">Архив</option><option value="all">Все сотрудники</option></select></label>
+<label>Статус<select class="ui-input" id="employeeStatusFilter"><option value="">Все статусы</option><option>Работает</option><option>Уволен</option></select></label>
+<label>Место работы<select class="ui-input" id="employeePlaceFilter"><option value="">Все места</option><option value="OBJECT">Объект</option><option value="OFFICE">Офис</option></select></label>
+<label>График<select class="ui-input" id="employeeScheduleFilter"><option value="">Все графики</option><option value="SHIFT">Вахта</option><option value="FIVE_TWO">5/2</option></select></label>
+</div><p id="employeeCount" class="ui-muted" aria-live="polite"></p>
+<div id="employeeList" class="employee-roster ui-table-wrap"><div class="ui-empty">Загрузка сотрудников…</div></div>
+</section>
+<article id="employeeProfile" class="ui-card employee-profile"><div class="ui-empty">Выберите сотрудника в списке</div></article>
+</div>
 </div><div id="positionsPanel" hidden><div class="category-header"><div><h2>Должности</h2><p>Справочник должностей сотрудников.</p></div><button type="button" class="primary-button" id="addPositionButton">+ Добавить должность</button></div><div id="positionList" class="category-list"><div class="category-loading">Загрузка должностей...</div></div></div></section></section>
 <section class="objects-page" id="crewsPage" hidden>
   <header class="page-header objects-page-header">
@@ -171,21 +274,41 @@
                 <div id="journalGroups"></div>
             </div>
         </section>
-        <section id="railTicketsPage" hidden>
-            <div class="card">
-                <h2>ЖД-билеты ЛУВР</h2>
-                <p>PDF контрольных купонов РЖД с текстовым слоем. Папки обрабатываются со всеми вложенными папками. До 10 МБ на файл; большие наборы загружаются частями.</p>
-                <div class="rail-ticket-actions">
-                    <button type="button" id="railChooseFolder" class="secondary-button" data-rail-upload>Выбрать папку</button>
-                    <button type="button" id="railChooseFiles" class="secondary-button" data-rail-upload>Выбрать файлы</button>
+        <section id="railTicketsPage" class="tickets-page" hidden>
+            <div class="tickets-toolbar">
+                <div><h1>Билеты</h1><p>Загрузка, проверка и подтверждение билетов сотрудников</p></div>
+                <div class="tickets-toolbar-actions">
+                    <button type="button" id="railChooseFiles" class="primary-button" data-rail-upload>Добавить билет</button>
+                    <button type="button" id="railChooseFolder" class="secondary-button" data-rail-upload>Загрузить папку</button>
                     <input id="railTicketFolder" type="file" webkitdirectory multiple hidden>
                     <input id="railTicketFiles" type="file" accept=".pdf,application/pdf" multiple hidden>
                 </div>
-                <div id="railTicketDrop" class="drop-zone">Перетащите ЖД-билеты сюда</div>
-                <p id="railUploadProgress" role="status" hidden>Обработка билетов…</p>
-                <p id="railTicketError" class="database-status error" role="alert" hidden></p>
             </div>
-            <div class="card"><h2>Результат обработки</h2><p>Направление определяется автоматически по станции Салым. События создаются только после подтверждения. Заезд использует время прибытия, выезд — время отправления.</p><p id="railBatchSummary" role="status"></p><div id="railTicketList" aria-live="polite"></div></div>
+            <div id="railTicketDrop" class="tickets-drop"><span class="tickets-drop-icon">⇧</span><strong>Перетащите PDF-билеты сюда</strong><span>или нажмите «Добавить билет»</span></div>
+            <p id="railUploadProgress" role="status" hidden>Обработка билетов…</p>
+            <p id="railTicketError" class="database-status error" role="alert" hidden></p>
+            <section id="railBatchSummary" class="tickets-processing-result" role="status"></section>
+            <div class="tickets-filters">
+                <label>Период с<input id="railFilterDateFrom" type="date"></label>
+                <label>по<input id="railFilterDateTo" type="date"></label>
+                <label>Сотрудник<input id="railFilterEmployee" type="search" placeholder="ФИО сотрудника"></label>
+                <label>Направление<select id="railFilterDirection"><option value="">Все</option><option value="ARRIVAL">Заезд</option><option value="DEPARTURE">Убытие</option></select></label>
+                <label>Статус<select id="railFilterStatus"><option value="">Все</option><option value="CONFIRMED">Подтверждён</option><option value="PARSED">На проверке</option><option value="ANNULLED">Аннулирован</option><option value="REJECTED">Отклонён</option></select></label>
+                <button type="button" id="railResetFilters" class="secondary-button">Сбросить</button>
+            </div>
+            <div class="tickets-workspace">
+                <div class="tickets-list-wrap">
+                    <table class="tickets-table">
+                        <thead><tr><th>№</th><th>Дата поездки</th><th>Сотрудник</th><th>Направление</th><th>Маршрут</th><th>Объект</th><th>Статус</th></tr></thead>
+                        <tbody id="railTicketList"></tbody>
+                    </table>
+                    <p id="railTicketEmpty" class="ui-muted" hidden>Билеты по выбранным фильтрам не найдены.</p>
+                </div>
+                <aside id="railTicketDetails" class="tickets-details">
+                    <h2>Данные билета</h2>
+                    <p class="ui-muted">Выберите билет в списке.</p>
+                </aside>
+            </div>
         </section>
         <section id="luvrMonthPage" hidden>
             <h1>ЛУВР</h1>
@@ -219,6 +342,7 @@
                 <button id="luvrMonthExport" type="button" class="secondary-button" disabled>Выгрузить Excel</button>
                 <select id="luvrMonthEmployee" aria-label="Добавить сотрудника в месяц" hidden></select>
             </div>
+            <div class="luvr-day-filter-status"><span id="luvrDayFiltersInfo" role="status"></span><button id="luvrDayFiltersReset" type="button" class="secondary-button" hidden>Сбросить фильтры дней</button></div>
             <p id="luvrMonthInfo" role="status"></p><p id="luvrMonthError" role="alert" hidden></p>
             <section id="luvrDurationDetails" class="luvr-calendar-editor" hidden aria-label="Продолжительность состояния">
                 <h3>Продолжительность вахты / межвахты</h3>
@@ -233,7 +357,8 @@
                 <button id="luvrMonthRestore" type="button" class="secondary-button">Вернуть автоматическое значение</button>
                 <button id="luvrMonthCancel" type="button" class="secondary-button">Отмена</button>
             </form>
-            <div class="luvr-month-scroll"><table class="luvr-month-table"><thead><tr id="luvrMonthHead"></tr></thead><tbody id="luvrMonthBody"></tbody><tfoot id="luvrMonthTotals"></tfoot></table></div>
+            <div class="luvr-color-legend"><span class="luvr-color-key" data-luvr-code="FULL">1 &#8212; &#1088;&#1072;&#1073;&#1086;&#1090;&#1072;</span><span class="luvr-color-key" data-luvr-code="HALF">0,5 &#8212; &#1087;&#1086;&#1083;&#1076;&#1085;&#1103;</span><span class="luvr-color-key" data-luvr-code="TRAVEL">&#1044; &#8212; &#1076;&#1086;&#1088;&#1086;&#1075;&#1072;</span><span class="luvr-color-key" data-luvr-code="OFF_SHIFT">&#1052;&#1042; &#8212; &#1084;&#1077;&#1078;&#1074;&#1072;&#1093;&#1090;&#1072;</span><span class="luvr-color-key" data-luvr-code="DOWNTIME">&#1055; &#8212; &#1087;&#1088;&#1086;&#1089;&#1090;&#1086;&#1081;</span><span class="luvr-color-key" data-luvr-code="DISMISSED">&#1059;&#1074;&#1086;&#1083;&#1077;&#1085;</span><span class="luvr-color-key luvr-color-sick">&#1041;&#1086;&#1083;&#1077;&#1079;&#1085;&#1100;</span><span class="luvr-color-key luvr-color-review">&#1058;&#1088;&#1077;&#1073;&#1091;&#1077;&#1090; &#1087;&#1088;&#1086;&#1074;&#1077;&#1088;&#1082;&#1080;</span><span class="luvr-color-key luvr-color-manual">&#1056;&#1091;&#1095;&#1085;&#1072;&#1103; &#1087;&#1088;&#1072;&#1074;&#1082;&#1072;</span></div>
+<div class="luvr-month-scroll"><table class="luvr-month-table"><thead><tr id="luvrMonthHead"></tr></thead><tbody id="luvrMonthBody"></tbody><tfoot id="luvrMonthTotals"></tfoot></table></div>
         </section>
         <section id="luvrCalendarPage" hidden>
             <div class="card">
@@ -253,7 +378,8 @@
                     <button id="luvrCalendarSave" type="submit" class="primary-button">Сохранить</button>
                     <button id="luvrCalendarCancel" type="button" class="secondary-button">Отмена</button>
                 </form>
-                <div class="luvr-calendar-scroll"><table class="luvr-calendar-table">
+                <div class="luvr-color-legend"><span class="luvr-color-key" data-luvr-code="FULL">1 &#8212; &#1088;&#1072;&#1073;&#1086;&#1090;&#1072;</span><span class="luvr-color-key" data-luvr-code="HALF">0,5 &#8212; &#1087;&#1086;&#1083;&#1076;&#1085;&#1103;</span><span class="luvr-color-key" data-luvr-code="TRAVEL">&#1044; &#8212; &#1076;&#1086;&#1088;&#1086;&#1075;&#1072;</span><span class="luvr-color-key" data-luvr-code="OFF_SHIFT">&#1052;&#1042; &#8212; &#1084;&#1077;&#1078;&#1074;&#1072;&#1093;&#1090;&#1072;</span><span class="luvr-color-key" data-luvr-code="DOWNTIME">&#1055; &#8212; &#1087;&#1088;&#1086;&#1089;&#1090;&#1086;&#1081;</span><span class="luvr-color-key" data-luvr-code="DISMISSED">&#1059;&#1074;&#1086;&#1083;&#1077;&#1085;</span><span class="luvr-color-key luvr-color-sick">&#1041;&#1086;&#1083;&#1077;&#1079;&#1085;&#1100;</span><span class="luvr-color-key luvr-color-review">&#1058;&#1088;&#1077;&#1073;&#1091;&#1077;&#1090; &#1087;&#1088;&#1086;&#1074;&#1077;&#1088;&#1082;&#1080;</span><span class="luvr-color-key luvr-color-manual">&#1056;&#1091;&#1095;&#1085;&#1072;&#1103; &#1087;&#1088;&#1072;&#1074;&#1082;&#1072;</span></div>
+<div class="luvr-calendar-scroll"><table class="luvr-calendar-table">
                     <thead><tr><th>Дата</th><th>Автоматически</th><th>Итог</th><th>Изменено вручную</th><th>Основание и проверка</th><th>Действия</th></tr></thead>
                     <tbody id="luvrCalendarBody"></tbody>
                 </table></div>
@@ -311,10 +437,19 @@
   </section>
 </section>
 <div class="modal-overlay" id="objectDirectoryModal" hidden>
-  <div class="modal category-modal">
+  <div class="modal category-modal object-entry-modal{% if test_mode %} object-test-dialog{% endif %}">
     <div class="modal-header"><h2 id="objectDirectoryModalTitle">Добавить объект</h2><button type="button" class="modal-close" id="objectDirectoryModalClose">×</button></div>
     <div class="modal-body">
+      {% if test_mode %}<p class="object-modal-intro">Укажите наименование самостоятельного объекта.</p>{% endif %}
       <label class="form-label">Наименование объекта *<textarea id="objectDirectoryNameInput" rows="4" maxlength="1000" placeholder="Введите полное наименование объекта"></textarea></label>
+      {% if clean_start %}
+      <label class="form-label">Статус<select class="ui-input" id="cleanStatus"><option value="ACTIVE">Действующий</option><option value="SUSPENDED">Приостановлен</option><option value="COMPLETED">Завершён</option></select></label>
+      <label class="form-label">Категория<select class="ui-input" id="cleanCategory"></select></label>
+      {% endif %}
+      {% if test_mode %}
+      <label class="form-label">Код<input class="ui-input" id="objectDirectoryCodeInput" readonly placeholder="Не задан"></label>
+      <label class="form-label">Тип<select class="ui-input" disabled><option selected>Самостоятельный объект</option></select></label>
+      {% endif %}
       <div class="database-status error" id="objectDirectoryModalError" hidden></div>
     </div>
     <div class="modal-footer"><button type="button" class="secondary-button" id="objectDirectoryModalCancel">Отмена</button><button type="button" class="primary-button" id="objectDirectoryModalSave">Добавить</button></div>
@@ -339,6 +474,7 @@
     <div class="modal-header"><h2 id="poModalTitle">Добавить ПО</h2><button type="button" class="modal-close" id="poModalClose">×</button></div>
     <div class="modal-body">
       <label class="form-label">Наименование ПО<input type="text" id="poNameInput" maxlength="255" placeholder="Введите наименование ПО"></label>
+      <label class="form-label">Категория по умолчанию<select id="poDefaultCategory"><option value="">Не задана</option></select></label>
       <div class="database-status error" id="poModalError" hidden></div>
     </div>
     <div class="modal-footer"><button type="button" class="secondary-button" id="poModalCancel">Отмена</button><button type="button" class="primary-button" id="poModalSave">Добавить</button></div>
@@ -365,6 +501,7 @@
     </div>
     <div class="modal-body">
       <label class="form-label">Водитель *<input type="text" id="crewDriverInput" maxlength="255" placeholder="Фамилия Имя Отчество"></label>
+      <label class="form-label">Email<input type="email" id="employeeEmailInput" maxlength="254"></label>
       <label class="form-label">Телефон<input type="text" id="crewPhoneInput" maxlength="30" placeholder="+7 ..."></label>
       <label class="form-label">Автомобиль<input type="text" id="crewVehicleInput" maxlength="100" placeholder="Марка автомобиля"></label>
       <label class="form-label">Гос. номер<input type="text" id="crewPlateInput" maxlength="30" placeholder="А123АА86"></label>
@@ -394,6 +531,7 @@
         <label class="form-label">Максимум дней на межвахте<input type="number" min="1" max="2147483647" step="1" id="employeeMaxOffShiftDays"></label>
       </div>
       <label class="form-label">Описание действий<textarea id="employeeActionDescription" rows="4" readonly placeholder="Описание выбранной должности"></textarea></label>
+      <label class="form-label">Email<input type="email" id="employeeEmailInput" maxlength="254"></label>
       <label class="form-label">Телефон<input type="text" id="employeePhoneInput" maxlength="30" placeholder="+7 ..."></label>
       <label class="form-label">Экипаж<select id="employeeCrewSelect"><option value="">Не назначен</option></select></label>
       <div class="employee-crew-preview" id="employeeCrewPreview" hidden></div>
@@ -422,14 +560,21 @@
 <div class="modal-overlay" id="positionModal" hidden><div class="modal category-modal"><div class="modal-header"><h2 id="positionModalTitle">Добавить должность</h2><button type="button" class="modal-close" id="positionModalClose">×</button></div><div class="modal-body"><label class="form-label">Название должности<input type="text" id="positionNameInput" maxlength="255" placeholder="Введите название должности"></label><label class="form-label">Специальность<input type="text" id="positionSpecialty" placeholder="Например, ОС/СТ"></label>
 <label class="form-label">Место работы<select id="positionWorkLocation"><option value="">Не указано</option><option value="OBJECT">Объект</option><option value="OFFICE">Офис</option></select></label>
 <label class="form-label">График<select id="positionWorkSchedule"><option value="">Не указан</option><option value="SHIFT">Вахта</option><option value="FIVE_TWO">5/2</option></select></label>
-<label class="form-label">Описание действий<textarea id="positionDescriptionInput" rows="6" placeholder="Введите описание действий для этой должности"></textarea></label><div class="database-status error" id="positionModalError" hidden></div></div><div class="modal-footer"><button type="button" class="secondary-button" id="positionModalCancel">Отмена</button><button type="button" class="primary-button" id="positionModalSave">Добавить</button></div></div></div>
+<label class="form-label">Плановое количество<input id="positionPlannedCountInput" type="number" min="0" max="2147483647" step="1" required value="0"></label><label class="form-label">Сдаёт ежедневный отчёт<select id="positionRequiresDailyReportInput"><option value="false">Нет</option><option value="true">Да</option></select></label><label class="form-label">Описание действий<textarea id="positionDescriptionInput" rows="5" placeholder="Введите описание действий для этой должности"></textarea></label><label class="form-label">Описание для отчёта<textarea id="positionReportDescriptionInput" rows="4" placeholder="Текст, используемый при формировании отчёта"></textarea></label><label class="form-label">Описание для АОС<textarea id="positionAosDescriptionInput" rows="4" placeholder="Текст, используемый при формировании АОС"></textarea></label><label class="form-label">Оснащение специалиста<textarea id="positionEquipmentInput" rows="4"></textarea></label><div class="database-status error" id="positionModalError" hidden></div></div><div class="modal-footer"><button type="button" class="secondary-button" id="positionModalCancel">Отмена</button><button type="button" class="primary-button" id="positionModalSave">Добавить</button></div></div></div>
 <div class="modal-overlay" id="modal" hidden><div class="modal"><div class="modal-header"><h2>Требуется согласование</h2><button class="modal-close" id="modalClose" aria-label="Закрыть">×</button></div><div class="modal-body"><div class="source-value"><span>Значение из Word</span><strong>Трофимов Сергей Николаевич</strong></div><h3>Возможное совпадение</h3><label class="candidate"><input type="radio" name="candidate" checked><div><strong>Трофимов Сергей Николаевич</strong><span>Инженер СК</span></div><b>98%</b></label></div><div class="modal-footer"><button class="secondary-button">Добавить нового</button><button class="primary-button">Связать</button></div></div></div>
 <div class="modal-overlay" id="subobjectDirectoryModal" hidden>
-  <form class="modal category-modal" id="subobjectDirectoryForm">
+  <form class="modal category-modal object-entry-modal{% if test_mode %} object-test-dialog{% endif %}" id="subobjectDirectoryForm">
     <div class="modal-header"><h2 id="subobjectDirectoryTitle">Новый подобъект</h2><button type="button" class="modal-close" id="subobjectDirectoryClose" aria-label="Закрыть">×</button></div>
     <div class="modal-body">
+      {% if test_mode %}
+      <p class="object-modal-intro">Новый подобъект будет размещён на втором уровне иерархии.</p>
+      {% endif %}
       <label class="form-label">Название<input id="subobjectDirectoryName" required></label>
       <label class="form-label">Родительский объект<select id="subobjectDirectoryParent" required></select></label>
+      {% if test_mode %}
+      <label class="form-label">Код<input class="ui-input" id="subobjectDirectoryCode" readonly placeholder="Не задан"></label>
+      <label class="form-label">Тип<select class="ui-input" disabled><option selected>Подобъект</option></select></label>
+      {% endif %}
       <label class="form-label" id="subobjectDirectoryActiveLabel">Статус<select id="subobjectDirectoryActive"><option value="true">Активен</option><option value="false">Неактивен</option></select></label>
       <div id="subobjectDirectoryConfirmation" class="category-parent-note" role="status" hidden></div>
       <div id="subobjectDirectoryError" class="database-status error" role="alert" hidden></div>
@@ -437,6 +582,35 @@
     <div class="modal-footer"><button type="button" class="secondary-button" id="subobjectDirectoryCancel">Отмена</button><button type="submit" class="primary-button" id="subobjectDirectorySave">Добавить</button></div>
   </form>
 </div>
+{% if test_mode %}
+<div class="modal-overlay" id="identityPromoteModal" hidden>
+  <section class="modal category-modal object-entry-modal object-test-dialog" role="dialog" aria-modal="true" aria-labelledby="identityPromoteTitle">
+    <div class="modal-header"><h2 id="identityPromoteTitle">Преобразовать в подобъект</h2><button type="button" class="modal-close" data-identity-close aria-label="Закрыть">×</button></div>
+    <div class="modal-body">
+      <p class="object-modal-intro">Выберите родительский объект. Название сохраняется, код не изменяется автоматически.</p>
+      <label class="form-label">Наименование<input class="ui-input" id="identityPromoteName"></label>
+      <label class="form-label">Новый родительский объект<select class="ui-input" id="identityPromoteParent" required></select></label>
+      <label class="form-label" id="identityPromoteCodeLabel">Код<input class="ui-input" id="identityPromoteCode" readonly placeholder="Не задан"></label>
+      <p class="object-modal-note">Преобразование выполняется после подтверждения в тестовой базе. Название и исходные связи сохраняются.</p>
+      <div class="category-parent-note" id="identityPromoteResult" role="status" hidden></div>
+    </div>
+    <div class="modal-footer"><button type="button" class="secondary-button" data-identity-close>Отмена</button><button type="button" class="primary-button" id="identityPromoteCheck">Проверить допустимость</button></div>
+  </section>
+</div>
+<div class="modal-overlay" id="identityStandaloneModal" hidden>
+  <section class="modal category-modal object-entry-modal object-test-dialog" role="dialog" aria-modal="true" aria-labelledby="identityStandaloneTitle">
+    <div class="modal-header"><h2 id="identityStandaloneTitle">Сделать самостоятельным объектом</h2><button type="button" class="modal-close" data-identity-close aria-label="Закрыть">×</button></div>
+    <div class="modal-body">
+      <p class="object-modal-intro">Подобъект станет объектом первого уровня. Название сохраняется, код не изменяется автоматически.</p>
+      <label class="form-label">Наименование<input class="ui-input" id="identityStandaloneName"></label>
+      <label class="form-label" id="identityStandaloneCodeLabel">Код<input class="ui-input" id="identityStandaloneCode" readonly placeholder="Не задан"></label>
+      <p class="object-modal-note">Преобразование выполняется после подтверждения в тестовой базе. Название и исходные связи сохраняются.</p>
+      <div class="category-parent-note" id="identityStandaloneResult" role="status" hidden></div>
+    </div>
+    <div class="modal-footer"><button type="button" class="secondary-button" data-identity-close>Отмена</button><button type="button" class="primary-button" id="identityStandaloneCheck">Проверить допустимость</button></div>
+  </section>
+</div>
+{% endif %}
 <div id="railDeleteModal" class="modal-overlay" hidden>
     <section class="modal" role="dialog" aria-modal="true" aria-labelledby="railDeleteTitle">
         <div class="modal-header"><h2 id="railDeleteTitle">Удалить ЖД-событие?</h2><button id="railDeleteClose" type="button" class="modal-close" aria-label="Отмена">×</button></div>
@@ -444,20 +618,45 @@
         <div class="modal-footer"><button id="railDeleteCancel" type="button" class="secondary-button">Отмена</button><button id="railDeleteConfirm" type="button" class="primary-button">Удалить</button></div>
     </section>
 </div>
+{% if clean_start %}
+<script src="/static/js/construction_choices.js?v=20261014-identity"></script>
+<script src="/static/js/ui_icons.js?v=20261004-visual"></script>
+<script src="/static/js/object_hierarchy.js?v=clean-start-1"></script>
+<script src="/static/js/construction_identity_preview.js?v=clean-start-1"></script>
+<script src="/static/js/clean_construction_workspace.js?v=1"></script>
+<script src="/static/js/clean_assignments_workspace.js?v=1"></script>
+{% else %}
 <script src="/static/js/luvr_directories.js?v=20261001-1"></script>
-<script src="/static/js/luvr_history.js?v=20261003-raildelete"></script>
+<script src="/static/js/luvr_history.js?v=20261012-employee-sections"></script>
 <script src="/static/js/employee_archive.js?v=20261002-1"></script>
-<script src="/static/js/object_hierarchy.js?v=20260930-1"></script>
-<script src="/static/js/report_save.js?v=20260927-path2"></script>
-<script src="/static/js/processing.js?v=20261003-luvrui"></script>
-<script src="/static/js/journal.js?v=20260927-1"></script>
-<script src="/static/js/rail_tickets.js?v=20261003-raildelete"></script>
-<script src="/static/js/luvr_calendar.js?v=20261003-raildelete"></script>
+<script src="/static/js/construction_choices.js?v=20261014-identity"></script>
+<script src="/static/js/object_hierarchy.js?v=20261015-long-names"></script>
+<script src="/static/js/construction_identity_preview.js?v=20261014-stage492"></script>
+<script src="/static/js/report_save.js?v=20261017-add-file"></script>
+<script src="/static/js/report_review.js?v=20261016-po-category"></script>
+<script src="/static/js/employee_absences.js?v=20261004-absence"></script>
+<script src="/static/js/ui_icons.js?v=20261004-visual"></script>
+<script src="/static/js/employee_visuals.js?v=20261004-visual"></script>
+<script src="/static/js/employee_card.js?v=20261012-employee-sections"></script>
+<script src="/static/js/employee_workspace.js?v=20261004-visual"></script>
+<script src="/static/js/crew_memberships.js?v=20261013"></script>
+<script src="/static/js/object_archive.js?v=20261013"></script>
+<script src="/static/js/directory_workspace.js?v=20261014-stage471"></script>
+<script src="/static/js/processing.js?v=20261017-add-file"></script>
+<script src="/static/js/journal.js?v=20261014-identity"></script>
+<script src="/static/js/rail_employee.js?v=20261008-1"></script>
+<script src="/static/js/rail_tickets.js?v=20261014-identity"></script>
+<script src="/static/js/luvr_calendar.js?v=20261015-luvr-colors"></script>
 <script src="/static/js/luvr_duration.js?v=20261002-duration"></script>
 <script src="/static/js/luvr_sort.js?v=20261003-luvrui"></script>
 <script src="/static/js/luvr_day_totals.js?v=compact-20261003-totals"></script>
-<script src="/static/js/luvr_month.js?v=20261003-final"></script>
+<script src="/static/js/luvr_month.js?v=20261015-luvr-colors"></script>
 <script src="/static/js/luvr_header.js?v=20261003-final"></script>
 <script src="/static/js/luvr_scroll.js?v=20261003-luvrui"></script>
+<script src="/static/js/matrix_report.js?v=20261017-add-file"></script>
+<script src="/static/js/production_matrix.js?v=20261017-add-file"></script>
+<script src="/static/js/deployment.js?v=20261016-analysis-export"></script>
+<script src="/static/js/deployment_analysis.js?v=1"></script>
+{% endif %}
 </body>
 </html>

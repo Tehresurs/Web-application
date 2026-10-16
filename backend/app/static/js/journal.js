@@ -7,10 +7,10 @@ function journalQuery(from, to, view, employee = "", object = "", includeSubobje
     }
     if (object) {
         // Numeric values remain supported for existing callers; the UI uses typed keys.
-        const match = String(object).match(/^(?:(object|subobject):)?([1-9]\d*)$/);
+        const match = String(object).match(/^(?:(object|subobject|entity):)?([1-9]\d*)$/);
         if (!match) throw new Error("Выберите объект или подобъект из списка.");
         const child = match[1] === "subobject";
-        query.set(child ? "subobject_id" : "object_id", match[2]);
+        query.set(match[1] === "entity" ? "entity_id" : child ? "subobject_id" : "object_id", match[2]);
         if (!child) query.set("include_subobjects", String(includeSubobjects));
     }
     if (subcontractor) {
@@ -78,7 +78,7 @@ function initJournal() {
         get("journalEntityFilters").append(...(view.value === "employee"
             ? [get("journalEmployeeLabel"), get("journalObjectLabel")]
             : [get("journalObjectLabel"), get("journalEmployeeLabel")]));
-        get("journalIncludeLabel").hidden = !object.value.startsWith("object:");
+        get("journalIncludeLabel").hidden = !/^(object|entity):/.test(object.value);
     }
 
     function selectValue(select, value, name) {

@@ -17,6 +17,11 @@ CREATE TABLE positions (
 
     -- Описание действий зависит от должности
     action_description TEXT,
+    specialty TEXT,
+    work_location TEXT,
+    work_schedule TEXT,
+    report_description TEXT,
+    aos_description TEXT,
 
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -81,11 +86,19 @@ ON employees (LOWER(TRIM(full_name)));
 -- 4. КАТЕГОРИИ ОБЪЕКТОВ
 -- ============================================
 
-CREATE TABLE object_categories (
+CREATE TABLE IF NOT EXISTS object_categories (
     id BIGSERIAL PRIMARY KEY,
 
-    name VARCHAR(255) NOT NULL UNIQUE
+    name VARCHAR(255) NOT NULL UNIQUE,
+    parent_id BIGINT,
+    sort_order INTEGER,
+    is_system BOOLEAN
 );
+
+ALTER TABLE object_categories
+    ADD COLUMN IF NOT EXISTS parent_id BIGINT,
+    ADD COLUMN IF NOT EXISTS sort_order INTEGER,
+    ADD COLUMN IF NOT EXISTS is_system BOOLEAN;
 
 -- ============================================
 -- 5. ОБЪЕКТЫ СТРОИТЕЛЬСТВА
@@ -115,6 +128,15 @@ CREATE TABLE po_types (
     id BIGSERIAL PRIMARY KEY,
 
     name VARCHAR(255) NOT NULL UNIQUE
+);
+
+-- Legacy employee assignments are extended with entity_id by migration 024.
+CREATE TABLE IF NOT EXISTS employee_assignments (
+    id BIGSERIAL PRIMARY KEY,
+    employee_id BIGINT,
+    object_id BIGINT,
+    po_id BIGINT,
+    category_id BIGINT
 );
 
 -- ============================================

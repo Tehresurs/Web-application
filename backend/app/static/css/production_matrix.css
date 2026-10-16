@@ -1,0 +1,62 @@
+#productionMatrixPage[hidden],#pmDetails[hidden],#pmError[hidden]{display:none!important}
+#productionMatrixPage{min-width:0;max-width:100%}
+.pm-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:#153c59;color:#fff;padding:14px;border-radius:8px}
+.pm-toolbar h2{font-size:18px;margin:0 auto 0 0}.pm-period{display:flex;align-items:center;gap:6px}.pm-period label{display:flex;gap:6px;align-items:center;font-size:12px}.pm-period input,.pm-period button{height:34px;border:1px solid #cbd5e1;border-radius:5px;background:white;padding:5px;color:#172c40}
+.pm-legend{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0;font-size:12px}.pm-legend span{padding:5px 8px;border-radius:4px;background:#f1f5f9}
+.pm-workspace{display:flex;align-items:flex-start;gap:12px;min-width:0}.pm-table-scroll{container-type:inline-size;flex:1;min-width:0;overflow:auto;max-height:72vh;background:white;border:1px solid #dce5ed;border-radius:7px}
+.pm-table{table-layout:fixed;border-collapse:separate;border-spacing:0;width:100%;font-size:12px}.pm-table th,.pm-table td{border-right:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;padding:6px;text-align:center;overflow-wrap:anywhere}
+.pm-table>thead th{position:sticky;top:0;z-index:3;background:#edf3f8;color:#19354e}.pm-name{text-align:left!important;background:#fff}.pm-name button{font:inherit;font-weight:600;text-align:left;background:none;border:0;cursor:pointer;color:#142e46;padding:4px}.pm-name small{display:block;color:#64748b;padding-left:16px}
+.pm-table .pm-employee>td:first-child{position:sticky;left:0;z-index:2;background:#fff}.pm-table .pm-name{position:sticky;left:42px;z-index:2}.pm-expanded>td{padding:10px!important;background:#f3f8fc}
+.pm-inner-scroll{overflow:auto;width:calc(100cqw - 22px);max-height:55vh;position:sticky;left:10px}.pm-inner{table-layout:fixed;border-collapse:separate;border-spacing:0;min-width:100%;font-size:12px;background:white}.pm-inner th{white-space:nowrap;background:#e7eff7;color:#153c59;position:sticky;top:0;z-index:1}.pm-inner>tbody td:nth-child(-n+5){text-align:left}
+.pm-cell{width:100%;min-height:30px;border:1px solid transparent;border-radius:4px;background:transparent;font:inherit;cursor:pointer;padding:4px;white-space:nowrap}.pm-cell:hover,.pm-cell[aria-pressed=true]{outline:2px solid #2583cd;outline-offset:-2px}.pm-source-FACT{font-weight:700;border-bottom:3px solid #248363!important}.pm-source-PLAN{border-bottom:2px dashed #4b87c1!important}
+.pm-view .pm-state-FULL,.pm-view .pm-check-OK{background:#e0f5e6;color:#175d30}.pm-view .pm-state-HALF{background:#dceeff;color:#125990}.pm-view .pm-state-OFF_SHIFT{background:#fff2cf;color:#73591c}.pm-view .pm-state-TRAVEL{background:#e5eafa;color:#465578}.pm-view .pm-state-DISMISSED,.pm-view .pm-check-CONFLICT{background:#ffe1e1;color:#9f2525}.pm-view .pm-check-WARNING{background:#fff0d4;color:#89500d}
+.pm-total{font-weight:600;background:#f0f5fa}.pm-total th{text-align:left!important}.pm-chip{display:inline-block;vertical-align:middle;box-sizing:border-box;font:inherit;border:1px solid #cbdfef;border-radius:5px;background:#eef6fc;padding:6px;cursor:pointer;color:#215d88;max-width:100%}.pm-editor select{width:150px;max-width:100%;padding:5px;border:1px solid #92bbdc;border-radius:5px;background:#fff}.pm-editor small{display:block;color:#64748b;margin-top:4px}
+.pm-details{flex:0 0 320px;max-height:72vh;overflow:auto;background:white;border:1px solid #dce5ed;border-radius:7px;padding:14px;font-size:12px;overflow-wrap:anywhere}.pm-detail-heading{display:flex;justify-content:space-between;align-items:center}.pm-detail-heading h3{margin:0 0 14px}.pm-close{background:none;border:0;font-size:22px;cursor:pointer}.pm-detail-card{border-top:1px solid #dce5ed;padding:12px 0}.pm-detail-card p{margin:6px 0}.pm-detail-card small{display:block;margin:8px 0}.pm-warning{padding:7px;background:#fff2dc;color:#804813}.pm-table button:focus-visible,.pm-details button:focus-visible{outline:2px solid #2583cd}
+@media(max-width:1350px){.pm-details{flex-basis:270px}}@media(max-width:1000px){.pm-workspace{flex-direction:column}.pm-table-scroll{width:100%}.pm-details{width:100%;box-sizing:border-box;flex-basis:auto;max-height:50vh}}
+
+span.pm-chip{cursor:default}
+
+/* Employee workspace visual language; one scroll owner for every calendar. */
+body:has(#productionMatrixPage:not([hidden])) .sidebar{background:#132e50;color:#e6eef9}
+body:has(#productionMatrixPage:not([hidden])) .sidebar .nav-item,
+body:has(#productionMatrixPage:not([hidden])) .sidebar .logo{color:#dbe7f8}
+body:has(#productionMatrixPage:not([hidden])) .sidebar .nav-item.active{background:#255185;color:#fff}
+body:has(#productionMatrixPage:not([hidden])) .main{min-width:0}
+.pm-toolbar.ui-card{padding:14px 16px;background:#fff;color:#163658;border-radius:10px;gap:8px}
+.pm-toolbar h2{font-size:18px;font-weight:650;line-height:1.4}
+.pm-toolbar .ui-button{font-size:12px;min-height:34px;padding:7px 10px}
+.pm-period input,.pm-period button{border-color:#cad7e8;border-radius:7px;font:inherit;font-size:12px}
+.pm-period button{min-width:30px;cursor:pointer}
+.pm-legend{gap:6px;margin:10px 0}.pm-legend span{border:1px solid #e0e6ee;border-radius:6px;padding:4px 7px}
+#pmStatus{font-size:12px;color:#63758a;margin:8px 0 12px}
+.pm-table-scroll{container-type:normal;max-height:max(260px,calc(100vh - 365px));border-color:#dce4ef;border-radius:10px;scrollbar-gutter:stable}
+.pm-table th,.pm-table td{box-sizing:border-box;padding:4px;border-color:#e5ebf2;font-variant-numeric:tabular-nums}
+.pm-table>thead th{height:40px;background:#edf3fa;color:#24476f;font-weight:600}
+.pm-table>thead th:first-child{left:0;z-index:5}.pm-table>thead th:nth-child(2){left:42px;z-index:5}
+.pm-name button{padding:3px 6px;font-size:13px;color:#163658}
+.pm-name small{padding-left:20px;font-size:11px;line-height:1.4}
+.pm-employee:has([aria-expanded=true])>td,.pm-employee:has([aria-expanded=true]) .pm-name{background:#e9f2ff!important}
+.pm-employee:has([aria-expanded=true])>td:first-child{box-shadow:inset 3px 0 #245db0}
+.pm-expanded>td{padding:0!important;border-right:0;background:#fff}
+.pm-inner-scroll{overflow:visible;width:100%;max-height:none;position:static}
+.pm-inner{min-width:0}.pm-inner th{white-space:normal;position:static;background:#f1f5fa;font-size:11px;font-weight:600;color:#52647b}
+.pm-inner>tbody td:nth-child(-n+5){font-size:11px;line-height:1.4;padding:7px}
+.pm-inner>tbody tr:hover{background:#f8faff}
+.pm-chip{font-size:11px;line-height:1.4;padding:5px 7px;background:#edf3fa;border-color:#dce4ef;color:#24476f;border-radius:6px}
+.pm-editor select{width:100%;min-height:32px;font:inherit;border-color:#cad7e8;border-radius:7px}
+.pm-cell{min-height:28px;padding:3px 1px;font-size:11px;border-radius:5px}
+.pm-view .pm-source-PLAN.pm-check-OK{background:#f3f6fa;color:#52647b;border-bottom:2px dashed #96a6b9!important}
+.pm-view .pm-source-FACT.pm-check-OK{background:#eaf3f9;color:#234b70;border-bottom:3px solid #557c9e!important}
+.pm-cameral>td:nth-child(-n+5){background:#f4f5f7;color:#626777}
+.pm-cell[aria-pressed=true]{outline:2px solid #245db0;outline-offset:-2px;box-shadow:inset 0 0 0 3px #fff}
+.pm-total th,.pm-total td{font-size:11px;height:30px}.pm-total th{background:#edf3fa;color:#24476f}
+.pm-details.ui-card{padding:14px;flex-basis:290px;border-radius:10px;border-top:3px solid #245db0;max-height:70vh;box-sizing:border-box;line-height:1.5}
+.pm-detail-heading{border-bottom:1px solid #e5ebf2;margin-bottom:12px;padding-bottom:8px}.pm-detail-heading h3{margin:0;color:#163658;font-size:15px}
+.pm-close{color:#63758a;border-radius:6px}.pm-close:hover{background:#edf3fa}
+.pm-details>p[class*=pm-check]{padding:6px 8px;border-radius:6px;font-weight:600}
+.pm-detail-card{padding:10px;margin:10px 0 0;border:1px solid #dce4ef;border-radius:8px;background:#fafcff}
+.pm-detail-card>strong{color:#24476f}.pm-detail-card button{font-size:12px;max-width:100%;white-space:normal}
+.pm-warning{border-radius:6px;border:1px solid #f8d9b6;line-height:1.45}
+@media(max-width:1450px){.pm-workspace{flex-direction:column}.pm-table-scroll{width:100%;box-sizing:border-box}.pm-details.ui-card{width:100%;flex-basis:auto;max-height:340px}}
+
+.pm-view [hidden]{display:none!important}
