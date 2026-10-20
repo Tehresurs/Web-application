@@ -150,3 +150,76 @@ class RailProductionAssignmentTests(unittest.TestCase):
         self.assertEqual(before,self.linked(ticket))
         self.assertEqual({c['object_id'] for c in self.cells()},{1,2})
         self.assertEqual(http_request('GET',f"/api/rail-tickets/{ticket['id']}")[1]['item']['object_id'],1)
+
+
+    def test_arrival_object_po_category_are_atomic_and_idempotent(self):
+        ticket=self.upload();self.assertEqual(self.action(ticket,'confirm')[0],200)
+        route=f"/api/rail-tickets/{ticket['id']}/object"
+        status,body=http_request('PATCH',route,{'object_id':1,'po_id':1,'category_id':90})
+        self.assertEqual(status,200,body)
+        self.assertEqual(body['item']['assignment_po_id'],1)
+        self.assertEqual(body['item']['assignment_category_id'],90)
+        linked=self.linked(ticket)
+        saved=next(c for c in linked if c['source_ticket_id']==ticket['id'])
+        self.assertEqual(saved['items'][0]['initial_category_id'],90)
+        self.assertEqual(saved['items'][0]['po_id'],1)
+        self.assertEqual(self.cells()[0]['category_id'],90)
+        self.assertEqual(self.cells()[0]['po_id'],1)
+        self.assertEqual(http_request('PATCH',route,{'object_id':1,'po_id':1,'category_id':90})[0],200)
+        self.assertEqual(self.linked(ticket),linked)
+        status,body=http_request('PATCH',route,{'object_id':2,'po_id':1,'category_id':999999})
+        self.assertEqual(status,404,body)
+        self.assertEqual(self.linked(ticket),linked)
+        self.assertEqual(http_request('GET',f"/api/rail-tickets/{ticket['id']}")[1]['item']['object_id'],1)
+
+    def test_arrival_category_can_be_edited_without_changing_fact_or_luvr(self):
+        ticket=self.upload();self.action(ticket,'confirm')
+        route=f"/api/rail-tickets/{ticket['id']}/object"
+        self.assertEqual(http_request('PATCH',route,{'object_id':1,'po_id':1,'category_id':90})[0],200)
+        before=self.snapshot()
+        self.assertEqual(http_request('PATCH',route,{'object_id':1,'po_id':1,'category_id':91})[0],200)
+        self.assertEqual(self.cells()[0]['category_id'],91)
+        self.assertEqual(before,self.snapshot())
+
+    def test_complete_arrival_assignment_requires_confirmed_ticket(self):
+        ticket=self.upload()
+        route=f"/api/rail-tickets/{ticket['id']}/object"
+        self.assertEqual(http_request('PATCH',route,{'object_id':1,'po_id':1,'category_id':90})[0],409)
+        self.assertEqual(http_request('GET',f"/api/rail-tickets/{ticket['id']}")[1]['item']['object_id'],None)
+
+
+class ArrivalFieldsValidationTests(unittest.TestCase):
+    def test_partial_empty_and_invalid_ids_rejected(self):
+        from pydantic import ValidationError
+        from app.api.rail_tickets import ObjectRequest
+        for payload in ({'object_id':1,'po_id':1},{'object_id':1,'category_id':1},
+                        {'object_id':1,'po_id':None,'category_id':None},
+                        {'object_id':1,'po_id':0,'category_id':1},
+                        {'po_id':1,'category_id':1}):
+            with self.assertRaises(ValidationError):ObjectRequest(**payload)
+        self.assertEqual(ObjectRequest(entity_id=16,po_id=2,category_id=3).category_id,3)
+
+
+    def test_entity_assignment_updates_only_target_and_repeats_without_save(self):
+        from unittest.mock import Mock
+        from copy import deepcopy
+        from app.repositories import rail_production_assignments as repo
+        ticket=dict(id=310,employee_id=15,movement_id=128,entity_id=16,object_id=None,
+                    arrival_datetime='2026-10-18T07:29',movement_type='ARRIVAL')
+        old=dict(id=3,version=2,source_ticket_id=310,arrival_movement_ref=128,
+                 effective_from='2026-10-18',source_revision=repo.ticket_revision(ticket),
+                 items=[dict(id=4,entity_id=16,initial_control_mode='INSPECTION'),
+                        dict(id=5,entity_id=17,po_id=9,initial_category_id=8)])
+        original=deepcopy(old)
+        with patch.object(repo,'_inputs',return_value={'changes':[old]}), \
+             patch.object(repo.identity,'reference',side_effect=lambda conn,item: {'entity_id':item['entity_id']}), \
+             patch.object(repo,'save') as save:
+            repo._sync_identity(Mock(),ticket,None,None,{'po_id':1,'initial_category_id':2})
+            items=save.call_args.args[1]['items']
+            self.assertEqual(items[0]['po_id'],1);self.assertEqual(items[0]['initial_category_id'],2)
+            self.assertEqual(items[1]['po_id'],9);self.assertEqual(items[1]['initial_category_id'],8)
+            self.assertEqual(old,original)
+            old['items'][0].update(po_id=1,initial_category_id=2)
+            save.reset_mock()
+            repo._sync_identity(Mock(),ticket,None,None,{'po_id':1,'initial_category_id':2})
+            save.assert_not_called()

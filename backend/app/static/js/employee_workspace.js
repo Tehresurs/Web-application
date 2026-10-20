@@ -40,6 +40,7 @@ async function renderEmployeeProfile(){
     const header=employeeNode('div',null,'employee-profile-header'),identity=employeeNode('div',null,'employee-identity'),contact=employeeNode('div',null,'employee-contact');
     identity.append(employeeNode('h2',item.full_name),employeeNode('p',item.position_name||'Должность не указана','ui-muted'));
     const phone=employeeNode('p',item.phone||'Телефон не указан');phone.prepend(uiIcon('phone'));const nrs=employeeNode('p',`№ НРС: ${item.nrs_number||'—'}`);nrs.prepend(uiIcon('id'));contact.append(phone,employeeNode('p',`Email: ${item.email||'—'}`),nrs,employeeNode('p',`Статус: ${employeeStatus(item)}${item.dismissal_date?' · '+luvrLocalDate(item.dismissal_date):''}`));header.append(identity,contact);card.append(header);
+    if(typeof mountEmployeeTransfers==='function')mountEmployeeTransfers(item,identity,card,()=>epoch===state.epoch);
     const badges=employeeNode('div');const stateBadge=employeeNode('span',item.dismissal_date&&item.dismissal_date<=employeeToday()?'Уволен':'Загрузка…','ui-badge');stateBadge.id='employeeStateBadge';
     badges.className='employee-header-badges';badges.append(employeeChip(place,item.work_location==='OBJECT'?'blue':'neutral',item.work_location==='OBJECT'?'object':'office'),stateBadge);identity.append(badges);
     const actions=employeeNode('div',null,'employee-profile-actions');

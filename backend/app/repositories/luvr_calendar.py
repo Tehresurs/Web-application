@@ -39,7 +39,10 @@ def decode_calendar_inputs(result):
 
 def get_calendar_inputs(employee_id):
     with get_connection() as conn, conn.cursor(row_factory=dict_row) as cursor:
+        conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
         cursor.execute(CALENDAR_SELECT+" WHERE e.id=%s",(employee_id,))
         result=cursor.fetchone()
         if result is None: raise DirectoryNotFound('Сотрудник не найден')
+        from app.repositories.personnel_transfers import attach_context
+        attach_context(conn,[result])
         return decode_calendar_inputs(result)

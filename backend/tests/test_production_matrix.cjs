@@ -1,6 +1,6 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');
 const {ProductionMatrixController,pmPayload,pmCategories,pmAmount}=require('../app/static/js/production_matrix.js');
-const cell={employee_id:17,edit_target:{scope:'PLAN',period_key:'arrival:1',basis_revision:'1',fact_id:null,assignment_item_id:4,effective_from:'2026-10-05',fields:{CATEGORY:{version:0},CONTROL_MODE:{version:3}}}};
+const cell={employee_id:17,edit_target:{scope:'PLAN',period_key:'arrival:1',basis_revision:'1',fact_id:null,assignment_item_id:4,effective_from:'2026-10-05',fields:{CATEGORY:{version:0},CONTROL_MODE:{version:3},PO:{version:2}}}};
 test('personal matrix keeps employee filter on load and after saving',async()=>{
  const calls=[];const c=new ProductionMatrixController(async(url)=>{calls.push(url);return url.includes('categories')?{items:[]}:{item:{employees:[]}};},()=>{},()=>{},17);
  await c.load(2026,10);await c.change(cell,'CONTROL_MODE','INSPECTION');
@@ -36,4 +36,10 @@ test('GEODETIC selection requires backend permission for the employee',()=>{
  const geo={...cell,allowed_control_modes:['INSPECTION','OPERATIONAL','GEODETIC']};
  assert.equal(pmPayload(geo,'CONTROL_MODE','GEODETIC').control_mode,'GEODETIC');
  assert.throws(()=>pmPayload(geo,'CONTROL_MODE','CAMERAL'));
+});
+
+test('PO uses its own version and a positive directory id',()=>{
+ const p=pmPayload(cell,'PO','2');assert.equal(p.po_id,2);assert.equal(p.version,2);
+ assert.equal(p.field_name,'PO');assert.ok(!('category_id' in p));assert.ok(!('control_mode' in p));
+ for(const invalid of ['',0,-1,'abc'])assert.throws(()=>pmPayload(cell,'PO',invalid));
 });

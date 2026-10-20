@@ -1,0 +1,15 @@
+# Create the Access application and email-only policy BEFORE routing traffic.
+# This is an example, not a runnable public tunnel.
+tunnel: REPLACE_WITH_TUNNEL_UUID
+credentials-file: C:/Users/REPLACE_USER/.cloudflared/REPLACE_WITH_TUNNEL_UUID.json
+ingress:
+  - hostname: demo.example.com
+    service: http://127.0.0.1:18001
+    originRequest:
+      httpHostHeader: demo.example.com
+      access:
+        required: true
+        teamName: REPLACE_CLOUDFLARE_TEAM
+        audTag:
+          - REPLACE_ACCESS_APPLICATION_AUD
+  - service: http_status:404

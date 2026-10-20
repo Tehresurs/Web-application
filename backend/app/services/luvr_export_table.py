@@ -21,13 +21,20 @@ def export_table_month(year, month, employee_ids=None):
     return render_table(snapshot,data,employee_ids)
 
 
-def ordered_employees(data, employee_ids):
+def ordered_employees(data, employee_ids, row_keys=None):
     if not data['formed']:raise ValueError('Сначала сформируйте ЛУВР за выбранный месяц.')
     employees=data['employees']
     if len(employees)>76:
         raise ValueError(f'В утверждённом шаблоне предусмотрено 76 строк сотрудников. В сформированном ЛУВР: {len(employees)}. Экспорт не выполнен.')
     by_id={e['employee_id']:e for e in employees}
-    if employee_ids is not None:
+    if row_keys is not None:
+        by_row={e.get('row_key') or 'employee:'+str(e['employee_id']):e for e in employees}
+        if len(by_row)!=len(employees) or len(set(row_keys))!=len(row_keys) or set(row_keys)!=set(by_row):raise ValueError('Порядок строк не соответствует ЛУВР. Обновите месяц.')
+        ordered=[by_row[k] for k in row_keys]
+        if employee_ids is not None and employee_ids!=[e['employee_id'] for e in ordered]:raise ValueError('Идентификаторы строк и сотрудников не согласованы')
+        employees=ordered
+    elif employee_ids is not None:
+        if len(by_id)!=len(employees):raise ValueError('В ЛУВР есть строки И.О. Обновите страницу для экспорта полного состава.')
         if any(type(i) is not int or i<=0 for i in employee_ids) or len(set(employee_ids))!=len(employee_ids) or set(employee_ids)!=set(by_id):
             raise ValueError('Порядок сотрудников не соответствует составу месяца. Обновите ЛУВР и повторите экспорт.')
         employees=[by_id[i] for i in employee_ids]
@@ -37,8 +44,8 @@ def ordered_employees(data, employee_ids):
     return employees
 
 
-def render_table(snapshot,data,employee_ids=None,template=None):
-    employees=ordered_employees(data,employee_ids)
+def render_table(snapshot,data,employee_ids=None,template=None,*,row_keys=None):
+    employees=ordered_employees(data,employee_ids,row_keys)
     year,month=data['year'],data['month']
     if (snapshot['year'],snapshot['month'])!=(year,month):raise ValueError('Период snapshot не совпадает с месяцем ЛУВР.')
     count=monthrange(year,month)[1]

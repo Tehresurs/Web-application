@@ -22,16 +22,17 @@ class OrderedExportRequest(RequestModel):
     year: int=Field(ge=1900,le=9999)
     month: int=Field(ge=1,le=12)
     employee_ids: list[StrictInt]
+    row_keys: list[str]|None=None
 
 
 @router.post('/export',response_class=Response,responses={200:{'content':{'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':{}}}})
 def download_ordered_month(body: OrderedExportRequest):
-    return _download_month(body.year,body.month,body.employee_ids)
+    return _download_month(body.year,body.month,body.employee_ids,body.row_keys)
 
 
-def _download_month(year,month,employee_ids=None):
+def _download_month(year,month,employee_ids=None,row_keys=None):
     try:
-        content = export_month(year, month, employee_ids)
+        content = export_month(year, month, employee_ids) if row_keys is None else export_month(year,month,employee_ids,row_keys=row_keys)
     except ValueError as exc:
         return JSONResponse(status_code=400, content={'status': 'error', 'message': str(exc)})
     return Response(content, media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -88,6 +89,8 @@ class Totals(BaseModel):
 
 
 class MonthEmployee(EmployeeCalendar):
+    row_key: str|None=None
+    position_history_warning: str|None=None
     position_name: str | None
     specialty: str | None
     nrs_number: str | None

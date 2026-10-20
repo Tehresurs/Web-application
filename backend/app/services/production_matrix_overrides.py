@@ -110,12 +110,14 @@ def resolve(data, overrides, date_from, date_to):
                     until = (date.fromisoformat(boundaries[index+1]) - timedelta(days=1)).isoformat() if index+1 < len(boundaries) else right
                     category = item.get('category_id') if fact else item.get('initial_category_id')
                     mode = None if fact else item.get('initial_control_mode')
+                    po = item.get('po_id')
                     applied = {}
-                    for field in ('CATEGORY','CONTROL_MODE'):
+                    for field in ('CATEGORY','CONTROL_MODE','PO'):
                         options = [o for o in candidates if o['field_name'] == field and str(o['effective_from']) <= day]
                         if options:
                             chosen = max(options, key=lambda o: str(o['effective_from']))
                             if field == 'CATEGORY': category = chosen['category_id']
+                            elif field == 'PO': po = chosen['po_id']
                             else: mode = chosen['control_mode']
                             applied[field] = chosen['id']
                     prior_modes=[o for o in inherited_modes if str(o['effective_from'])<=day]
@@ -125,6 +127,6 @@ def resolve(data, overrides, date_from, date_to):
                     intervals.append({'period_key': period['period_key'], 'basis_revision': basis_revision,
                                       'scope': scope, 'fact_id': item['id'] if fact else None,
                                       'assignment_item_id': None if fact else item['id'], 'object_id': item['object_id'],
-                                      'effective_from': day, 'effective_to': until, 'category_id': category,
+                                      'effective_from': day, 'effective_to': until, 'category_id': category, 'po_id': po,
                                       'control_mode': mode, 'applied_overrides': applied, 'editable': True})
     return {'employee_id': data['id'], 'history': history, 'intervals': intervals, 'warnings': source['warnings']}

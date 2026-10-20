@@ -45,7 +45,13 @@ def month_calendar(year, month, as_of_date=None):
         row.update({key:employee.get(key) for key in ('position_name','specialty','nrs_number')})
         row['totals']=calendar_totals(row['days'])
         row['duration']=calculate_duration(employee,as_of_date)
-        employees.append(row)
+        from app.services.personnel_positions import position_on,split_luvr_rows
+        dated=position_on(employee,as_of_date)
+        row['position_name']=dated.get('position_name',row['position_name'])
+        row['position_history_warning']=dated.get('position_history_warning')
+        for display_row in split_luvr_rows(row,employee):
+            display_row['totals']=calendar_totals(display_row['days'])
+            employees.append(display_row)
     return dict(year=year,month=month,days_in_month=monthrange(year,month)[1],formed=inputs['formed'],employees=employees,
                 as_of_date=as_of_date,is_projection=as_of_date>today,
                 day_totals=calendar_day_totals(employees,year,month))

@@ -1,3 +1,4 @@
+from contextlib import nullcontext
 from datetime import date
 from psycopg.rows import dict_row
 from psycopg.pq import TransactionStatus
@@ -7,9 +8,9 @@ from app.repositories.production_assignments import _inputs
 from app.repositories.production_control_modes import policy
 
 
-def get_inputs(year, month, employee_id=None):
+def get_inputs(year, month, employee_id=None, connection=None):
     """One read-only repeatable snapshot; reuse existing calendar/source loaders."""
-    with get_connection() as conn:
+    with (nullcontext(connection) if connection is not None else get_connection()) as conn:
         if conn.info.transaction_status == TransactionStatus.IDLE:
             conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY')
         with conn.cursor(row_factory=dict_row) as cur:
@@ -21,12 +22,22 @@ def get_inputs(year, month, employee_id=None):
                 ) cal JOIN employees e ON e.id=cal.employee_id LEFT JOIN positions p ON p.id=e.position_id''',
                 (year,month,employee_id,employee_id))
             employees = cur.fetchall()
+            from app.repositories.personnel_transfers import attach_context
+            attach_context(conn,employees)
             # Keep approval metadata separate from source facts: adding fields to
             # production['facts'] would invalidate existing override revisions.
             cur.execute("SELECT to_regclass('report_review_events') IS NOT NULL AS installed")
             review_events_installed=cur.fetchone()['installed']
+            cur.execute("SELECT to_regclass('production_matrix_dk') IS NOT NULL AS installed")
+            dk_installed=cur.fetchone()['installed']
             for employee in employees:
                 employee.update(policy(conn,employee['employee_id']))
+                employee['dk_dates']=[]
+                if dk_installed:
+                    cur.execute('SELECT work_date FROM production_matrix_dk WHERE employee_id=%s AND EXTRACT(YEAR FROM work_date)=%s AND EXTRACT(MONTH FROM work_date)=%s',
+                                (employee['employee_id'],year,month))
+                    employee['dk_dates']=[r['work_date'].isoformat() for r in cur.fetchall()]
+
                 if employee['dismissal_date']:
                     employee['dismissal_date'] = date.fromisoformat(employee['dismissal_date']) if isinstance(employee['dismissal_date'],str) else employee['dismissal_date']
                 decode_calendar_inputs(employee)

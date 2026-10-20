@@ -60,3 +60,5 @@ body:has(#productionMatrixPage:not([hidden])) .main{min-width:0}
 @media(max-width:1450px){.pm-workspace{flex-direction:column}.pm-table-scroll{width:100%;box-sizing:border-box}.pm-details.ui-card{width:100%;flex-basis:auto;max-height:340px}}
 
 .pm-view [hidden]{display:none!important}
+
+.pm-cell.pm-dk,.pm-dk-note{background:#eee5fa!important;color:#663399!important;border:1px solid #ab84cf!important;font-weight:700}.pm-dk-note{padding:8px;border-radius:6px}

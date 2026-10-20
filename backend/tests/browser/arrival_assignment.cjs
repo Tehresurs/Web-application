@@ -1,0 +1,56 @@
+// Read-only UI check: never submit categories or assignments on the working server.
+const assert=require('node:assert/strict');
+(async()=>{
+ const base=process.env.MODAL_CDP_URL||'http://127.0.0.1:9234';
+ const app=process.env.MODAL_APP_URL||'http://127.0.0.1:8001/';
+ assert.equal(new URL(app).port,'8001');
+ const page=await(await fetch(base+'/json/new?about:blank',{method:'PUT'})).json();
+ const ws=new WebSocket(page.webSocketDebuggerUrl);await new Promise(r=>ws.addEventListener('open',r,{once:true}));
+ let id=0;const pending=new Map(),errors=[];
+ ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id){const p=pending.get(m.id);pending.delete(m.id);m.error?p.reject(m.error):p.resolve(m.result);}if(m.method==='Runtime.exceptionThrown')errors.push(m.params);};
+ const call=(method,params={})=>new Promise((resolve,reject)=>{pending.set(++id,{resolve,reject});ws.send(JSON.stringify({id,method,params}));});
+ const ev=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
+ const wait=async expression=>{for(let i=0;i<200;i++){if(await ev(expression))return;await new Promise(r=>setTimeout(r,100));}throw Error('Timeout '+expression);};
+ try{
+  await call('Runtime.enable');await call('Network.enable');await call('Network.setCacheDisabled',{cacheDisabled:true});
+  await call('Page.navigate',{url:app});
+  await wait(`typeof document.getElementById('productionMatrixNavButton')?.onclick==='function'`);
+  await ev(`document.getElementById('luvrNavButton').click();document.getElementById('productionMatrixNavButton').click();document.getElementById('pmMonth').value='2026-10';document.getElementById('pmMonth').dispatchEvent(new Event('change'));`);
+  await wait(`!document.getElementById('pmRefresh').disabled && document.querySelector('.pm-employee[data-employee="15"]')`);
+  const employeeCount=await ev(`document.querySelectorAll('.pm-employee').length`);
+  await ev(`document.getElementById('pmExpandAll').click()`);
+  await wait(`document.querySelectorAll('.pm-inner').length===${employeeCount}`);
+  assert.equal(await ev(`document.getElementById('pmExpandAll').textContent`),'Свернуть все строки');
+  await ev(`document.querySelector('.pm-employee[data-employee="15"] .pm-name button').click()`);
+  assert.equal(await ev(`document.getElementById('pmExpandAll').textContent`),'Развернуть все строки');
+  await ev(`document.getElementById('pmExpandAll').click()`);
+  await wait(`document.querySelectorAll('.pm-inner').length===${employeeCount}`);
+  await ev(`document.getElementById('pmExpandAll').click()`);
+  await wait(`document.querySelectorAll('.pm-inner').length===0`);
+  assert.equal(await ev(`document.getElementById('pmExpandAll').getAttribute('aria-expanded')`),'false');
+  await ev(`document.querySelector('.pm-employee[data-employee="15"] .pm-name button').click()`);
+  await wait(`document.querySelector('.pm-inner tbody tr[data-row-key] td:nth-child(1) button') && document.querySelector('.pm-inner tbody tr[data-row-key] td:nth-child(3) button')`);
+  assert.equal(await ev(`[...document.querySelectorAll('.pm-inner button')].some(b=>['Добавить категорию','Изменить категорию'].includes(b.textContent))`),false);
+  await ev(`document.querySelector('.pm-inner tbody tr[data-row-key] td:nth-child(1) button').click()`);
+  await wait(`document.querySelector('.pm-inner select[data-field="PO"]')?.options.length>5`);
+  assert.ok(await ev(`document.querySelector('.pm-inner select[data-field="CATEGORY"]')?.options.length>5`));
+  const poTokens=await ev(`fetch('/api/production-matrix?year=2026&month=10&employee_id=15').then(r=>r.json()).then(r=>r.item.employees[0].rows.some(row=>Object.values(row.cells).some(c=>c.edit_target?.fields?.PO)))`);
+  assert.equal(poTokens,true);
+  assert.equal(await ev(`document.getElementById('pmError').hidden`),true);
+  await ev(`document.getElementById('railTicketsNavButton').click()`);
+  await wait(`[...document.querySelectorAll('#railTicketList tr')].some(r=>r.children[0]?.textContent==='310')`);
+  await ev(`[...document.querySelectorAll('#railTicketList tr')].find(r=>r.children[0]?.textContent==='310').click()`);
+  const form=await ev(`(()=>{const section=[...document.querySelectorAll('#railTicketDetails section')].find(s=>s.textContent.includes('Назначение (для заезда)'));return {labels:[...section.querySelectorAll('label')].map(l=>l.childNodes[0].textContent),options:[...section.querySelectorAll('select')].map(s=>s.options.length),values:[...section.querySelectorAll('select')].map(s=>s.value),disabled:section.querySelector('.ticket-object-save').disabled};})()`);
+  assert.deepEqual(form.labels,['Объект','ПО','Категория']);assert.equal(form.disabled,form.values.some(v=>!v));assert.ok(form.options.every(n=>n>1));
+  assert.equal(await ev(`document.querySelectorAll('#railTicketDetails .ticket-picker').length`),3);
+  await ev(`document.querySelector('#railTicketDetails .ticket-picker summary').click()`);
+  await wait(`document.querySelector('#railTicketDetails .ticket-picker[open] .ticket-picker-options button')`);
+  await ev(`(()=>{const search=document.querySelector('#railTicketDetails .ticket-picker[open] input');search.value='насос';search.dispatchEvent(new Event('input'));})()`);
+  const readable=await ev(`(()=>{const picker=document.querySelector('#railTicketDetails .ticket-picker[open]');const rows=[...picker.querySelectorAll('.ticket-picker-option')];return {count:rows.length,allMatch:rows.every(r=>r.textContent.toLowerCase().includes('насос')),wrapped:rows.every(r=>r.scrollWidth<=r.clientWidth+1),pageFits:document.getElementById('railTicketDetails').scrollWidth<=document.getElementById('railTicketDetails').clientWidth+1};})()`);
+  assert.ok(readable.count>0);assert.ok(readable.allMatch&&readable.wrapped&&readable.pageFits);
+  const clip=await ev(`(()=>{const picker=document.querySelector('#railTicketDetails .ticket-picker[open]');picker.scrollIntoView({block:'center'});const r=picker.closest('section').getBoundingClientRect();return {x:r.x+scrollX,y:r.y+scrollY,width:r.width,height:r.height,scale:1};})()`);
+  const screenshot=await call('Page.captureScreenshot',{format:'png',clip,captureBeyondViewport:true});
+  require('node:fs').writeFileSync('backend/output/arrival_assignment_checks/readable-picker.png',Buffer.from(screenshot.data,'base64'));
+  assert.deepEqual(errors,[]);console.log('Read-only 8001 browser check OK:',JSON.stringify({form,readable}));
+ }finally{ws.close();await fetch(base+'/json/close/'+page.id);}
+})().catch(e=>{console.error(e);process.exitCode=1;});

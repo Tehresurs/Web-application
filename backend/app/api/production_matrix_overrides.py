@@ -12,8 +12,9 @@ class OverrideRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     effective_from: date
     scope: Literal['FACT','PLAN']
-    field_name: Literal['CATEGORY','CONTROL_MODE']
+    field_name: Literal['CATEGORY','CONTROL_MODE','PO']
     category_id: PositiveInt | None = None
+    po_id: PositiveInt | None = None
     control_mode: Literal['INSPECTION','OPERATIONAL','GEODETIC'] | None = None
     fact_id: PositiveInt | None = None
     assignment_item_id: PositiveInt | None = None
@@ -27,6 +28,11 @@ class OverrideRequest(BaseModel):
             raise ValueError('Укажите ровно один источник: факт или строку назначения')
         if self.scope == 'FACT' and self.fact_id is None:
             raise ValueError('FACT требует подтверждённый факт')
+        if self.field_name == 'PO':
+            if self.po_id is None or self.category_id is not None or self.control_mode is not None:
+                raise ValueError('PO изменяет только ПО')
+            return self
+        if self.po_id is not None:raise ValueError('ПО изменяется отдельной корректировкой')
         if self.field_name == 'CATEGORY':
             if self.category_id is None or self.control_mode is not None:
                 raise ValueError('CATEGORY изменяет только категорию')

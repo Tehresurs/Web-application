@@ -1,0 +1,1434 @@
+[
+  {
+    "method": "GET",
+    "path": "/openapi.json",
+    "permission": "data.read",
+    "handler": "fastapi.applications.FastAPI.setup.<locals>.openapi",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "HEAD",
+    "path": "/openapi.json",
+    "permission": "data.read",
+    "handler": "fastapi.applications.FastAPI.setup.<locals>.openapi",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "GET",
+    "path": "/docs",
+    "permission": "data.read",
+    "handler": "fastapi.applications.FastAPI.setup.<locals>.swagger_ui_html",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "HEAD",
+    "path": "/docs",
+    "permission": "data.read",
+    "handler": "fastapi.applications.FastAPI.setup.<locals>.swagger_ui_html",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "GET",
+    "path": "/docs/oauth2-redirect",
+    "permission": "data.read",
+    "handler": "fastapi.applications.FastAPI.setup.<locals>.swagger_ui_redirect",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "HEAD",
+    "path": "/docs/oauth2-redirect",
+    "permission": "data.read",
+    "handler": "fastapi.applications.FastAPI.setup.<locals>.swagger_ui_redirect",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "GET",
+    "path": "/redoc",
+    "permission": "data.read",
+    "handler": "fastapi.applications.FastAPI.setup.<locals>.redoc_html",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "HEAD",
+    "path": "/redoc",
+    "permission": "data.read",
+    "handler": "fastapi.applications.FastAPI.setup.<locals>.redoc_html",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/auth/login",
+    "permission": "PUBLIC",
+    "handler": "app.api.user_auth.login",
+    "csrf": false,
+    "reason": "Stage 2 login, same-origin and rate limited"
+  },
+  {
+    "method": "GET",
+    "path": "/api/auth/me",
+    "permission": "SESSION",
+    "handler": "app.api.user_auth.me",
+    "csrf": false,
+    "reason": "Stage 2 own session; logout requires CSRF"
+  },
+  {
+    "method": "POST",
+    "path": "/api/auth/logout",
+    "permission": "SESSION",
+    "handler": "app.api.user_auth.logout",
+    "csrf": true,
+    "reason": "Stage 2 own session; logout requires CSRF"
+  },
+  {
+    "method": "POST",
+    "path": "/api/daily-control-results/review-options",
+    "permission": "data.create",
+    "handler": "app.api.daily_control.report_options",
+    "csrf": true,
+    "reason": "Step28 explicit workflow approval; guarded against deletion/approval/bulk branches",
+    "action": "daily.options",
+    "allowed_roles": [
+      "SYSTEM_TECHNICIAN"
+    ],
+    "payload_guard": "review_no_approval"
+  },
+  {
+    "method": "GET",
+    "path": "/api/daily-control-results/absence-rules",
+    "permission": "data.read",
+    "handler": "app.api.daily_control.absence_rules",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/daily-control-results/absence-rules/{field}",
+    "permission": "DENY",
+    "handler": "app.api.daily_control.cancel_absence_rule",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/daily-control-results/review-category",
+    "permission": "DENY",
+    "handler": "app.api.daily_control.review_category",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/daily-control-results/review-assignments/{employee_id}",
+    "permission": "data.read",
+    "handler": "app.api.daily_control.review_assignments",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/daily-control-results/check",
+    "permission": "data.create",
+    "handler": "app.api.daily_control.check_result",
+    "csrf": true,
+    "reason": "Step28 explicit workflow approval; guarded against deletion/approval/bulk branches",
+    "action": "daily.check",
+    "allowed_roles": [
+      "SYSTEM_TECHNICIAN"
+    ],
+    "payload_guard": "daily_no_replace"
+  },
+  {
+    "method": "POST",
+    "path": "/api/daily-control-results",
+    "permission": "data.create",
+    "handler": "app.api.daily_control.save_result",
+    "csrf": true,
+    "reason": "Step28 explicit workflow approval; guarded against deletion/approval/bulk branches",
+    "action": "daily.save",
+    "allowed_roles": [
+      "SYSTEM_TECHNICIAN"
+    ],
+    "payload_guard": "daily_no_replace"
+  },
+  {
+    "method": "GET",
+    "path": "/api/daily-control-results",
+    "permission": "data.read",
+    "handler": "app.api.daily_control.journal",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/daily-control-results/facts/{fact_id}",
+    "permission": "data.read",
+    "handler": "app.api.daily_control.matrix_fact_source",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/daily-control-results/upload-day",
+    "permission": "data.create",
+    "handler": "app.api.daily_control.upload_day",
+    "csrf": true,
+    "reason": "Step28 explicit workflow approval; guarded against deletion/approval/bulk branches",
+    "action": "daily.upload",
+    "allowed_roles": [
+      "SYSTEM_TECHNICIAN"
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/daily-control-results/facts/{fact_id}",
+    "permission": "DENY",
+    "handler": "app.api.daily_control.delete_matrix_fact",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/daily-control-results/upload-file",
+    "permission": "data.create",
+    "handler": "app.api.daily_control.upload_single_report",
+    "csrf": true,
+    "reason": "Step28 explicit workflow approval; guarded against deletion/approval/bulk branches",
+    "action": "daily.upload",
+    "allowed_roles": [
+      "SYSTEM_TECHNICIAN"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/api/subobjects",
+    "permission": "data.read",
+    "handler": "app.api.known_values.list_subobjects",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/subobjects/{subobject_id}",
+    "permission": "data.read",
+    "handler": "app.api.known_values.get_subobject",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/subobjects",
+    "permission": "data.create",
+    "handler": "app.api.known_values.create_subobject",
+    "csrf": true,
+    "reason": "Create ordinary production/directory data"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/subobjects/{subobject_id}",
+    "permission": "data.update",
+    "handler": "app.api.known_values.update_subobject",
+    "csrf": true,
+    "reason": "Edit ordinary production/directory data"
+  },
+  {
+    "method": "GET",
+    "path": "/api/value-aliases",
+    "permission": "data.read",
+    "handler": "app.api.known_values.list_aliases",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/subobjects/{subobject_id}/move/check",
+    "permission": "DENY",
+    "handler": "app.api.known_values.check_subobject_move",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/subobjects/{subobject_id}/move",
+    "permission": "DENY",
+    "handler": "app.api.known_values.transfer_subobject",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/value-aliases/{alias_id}",
+    "permission": "data.read",
+    "handler": "app.api.known_values.get_alias",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/value-aliases",
+    "permission": "data.create",
+    "handler": "app.api.known_values.create_alias",
+    "csrf": true,
+    "reason": "Create ordinary production/directory data"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/value-aliases/{alias_id}",
+    "permission": "data.update",
+    "handler": "app.api.known_values.update_alias",
+    "csrf": true,
+    "reason": "Edit ordinary production/directory data"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/value-aliases/{alias_id}",
+    "permission": "DENY",
+    "handler": "app.api.known_values.delete_alias",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/employees/{employee_id}/luvr/movements",
+    "permission": "data.read",
+    "handler": "app.api.luvr_history.list_movements",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/employees/{employee_id}/luvr/movements",
+    "permission": "data.create",
+    "handler": "app.api.luvr_history.create_movements",
+    "csrf": true,
+    "reason": "Create ordinary production/directory data"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/employees/{employee_id}/luvr/movements/{item_id}",
+    "permission": "data.update",
+    "handler": "app.api.luvr_history.update_movements",
+    "csrf": true,
+    "reason": "Edit ordinary production/directory data"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/employees/{employee_id}/luvr/movements/{item_id}",
+    "permission": "DENY",
+    "handler": "app.api.luvr_history.delete_movements",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/employees/{employee_id}/luvr/sick-periods",
+    "permission": "data.read",
+    "handler": "app.api.luvr_history.list_sick_periods",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/employees/{employee_id}/luvr/sick-periods",
+    "permission": "data.create",
+    "handler": "app.api.luvr_history.create_sick_periods",
+    "csrf": true,
+    "reason": "Create ordinary production/directory data"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/employees/{employee_id}/luvr/sick-periods/{item_id}",
+    "permission": "data.update",
+    "handler": "app.api.luvr_history.update_sick_periods",
+    "csrf": true,
+    "reason": "Edit ordinary production/directory data"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/employees/{employee_id}/luvr/sick-periods/{item_id}",
+    "permission": "DENY",
+    "handler": "app.api.luvr_history.delete_sick_periods",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/employees/{employee_id}/luvr/duration-exceptions",
+    "permission": "data.read",
+    "handler": "app.api.luvr_history.list_duration_exceptions",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/employees/{employee_id}/luvr/duration-exceptions",
+    "permission": "data.create",
+    "handler": "app.api.luvr_history.create_duration_exceptions",
+    "csrf": true,
+    "reason": "Create ordinary production/directory data"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/employees/{employee_id}/luvr/duration-exceptions/{item_id}",
+    "permission": "data.update",
+    "handler": "app.api.luvr_history.update_duration_exceptions",
+    "csrf": true,
+    "reason": "Edit ordinary production/directory data"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/employees/{employee_id}/luvr/duration-exceptions/{item_id}",
+    "permission": "DENY",
+    "handler": "app.api.luvr_history.delete_duration_exceptions",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/employees/{employee_id}/luvr/day-overrides",
+    "permission": "data.read",
+    "handler": "app.api.luvr_history.list_day_overrides",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/employees/{employee_id}/luvr/day-overrides",
+    "permission": "data.create",
+    "handler": "app.api.luvr_history.create_day_overrides",
+    "csrf": true,
+    "reason": "Create ordinary production/directory data"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/employees/{employee_id}/luvr/day-overrides/{item_id}",
+    "permission": "DENY",
+    "handler": "app.api.luvr_history.delete_day_overrides",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/rail-tickets/upload",
+    "permission": "data.create",
+    "handler": "app.api.rail_tickets.upload_tickets",
+    "csrf": true,
+    "reason": "Step28 explicit workflow approval; guarded against deletion/approval/bulk branches",
+    "action": "tickets.upload",
+    "allowed_roles": [
+      "SYSTEM_TECHNICIAN"
+    ],
+    "payload_guard": "single_ticket_file"
+  },
+  {
+    "method": "GET",
+    "path": "/api/rail-tickets",
+    "permission": "data.read",
+    "handler": "app.api.rail_tickets.list_tickets",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/rail-tickets/{ticket_id}",
+    "permission": "data.read",
+    "handler": "app.api.rail_tickets.get_ticket",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/rail-tickets/{ticket_id}/direction",
+    "permission": "DENY",
+    "handler": "app.api.rail_tickets.set_direction",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/rail-tickets/{ticket_id}/confirm",
+    "permission": "DENY",
+    "handler": "app.api.rail_tickets.confirm",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/rail-tickets/{ticket_id}/reject",
+    "permission": "DENY",
+    "handler": "app.api.rail_tickets.reject",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/rail-tickets/{ticket_id}/object",
+    "permission": "data.update",
+    "handler": "app.api.rail_tickets.set_object",
+    "csrf": true,
+    "reason": "Edit ordinary production/directory data"
+  },
+  {
+    "method": "POST",
+    "path": "/api/rail-tickets/{ticket_id}/annul",
+    "permission": "DENY",
+    "handler": "app.api.rail_tickets.annul",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/rail-tickets/{ticket_id}/restore",
+    "permission": "DENY",
+    "handler": "app.api.rail_tickets.restore",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/employees/{employee_id}/luvr/calendar",
+    "permission": "data.read",
+    "handler": "app.api.luvr_calendar.get_month",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/employees/{employee_id}/luvr/calendar/day",
+    "permission": "data.read",
+    "handler": "app.api.luvr_calendar.get_day",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/luvr/month/export",
+    "permission": "excel.export",
+    "handler": "app.api.luvr_month.download_month",
+    "csrf": false,
+    "reason": "Download existing report or in-memory export; no archive publication"
+  },
+  {
+    "method": "POST",
+    "path": "/api/luvr/month/export",
+    "permission": "excel.export",
+    "handler": "app.api.luvr_month.download_ordered_month",
+    "csrf": true,
+    "reason": "Download existing report or in-memory export; no archive publication"
+  },
+  {
+    "method": "GET",
+    "path": "/api/luvr/month/settings",
+    "permission": "data.read",
+    "handler": "app.api.luvr_month.header_settings",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/luvr/month/settings",
+    "permission": "DENY",
+    "handler": "app.api.luvr_month.save_header_settings",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/luvr/month/header-snapshot",
+    "permission": "data.read",
+    "handler": "app.api.luvr_month.header_snapshot",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/luvr/month",
+    "permission": "data.read",
+    "handler": "app.api.luvr_month.get_month",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/luvr/month/form",
+    "permission": "data.create",
+    "handler": "app.api.luvr_month.form_month",
+    "csrf": true,
+    "reason": "Step28 explicit workflow approval; guarded against deletion/approval/bulk branches",
+    "action": "luvr.form",
+    "allowed_roles": [
+      "SYSTEM_TECHNICIAN"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/api/luvr/month/employees",
+    "permission": "data.create",
+    "handler": "app.api.luvr_month.add_member",
+    "csrf": true,
+    "reason": "Step28 explicit workflow approval; guarded against deletion/approval/bulk branches",
+    "action": "luvr.member",
+    "allowed_roles": [
+      "SYSTEM_TECHNICIAN"
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/luvr/month/employees/{employee_id}",
+    "permission": "DENY",
+    "handler": "app.api.luvr_month.remove_member",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/employees/{employee_id}/absences",
+    "permission": "data.read",
+    "handler": "app.api.employee_absences.list_absences",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/employees/{employee_id}/absences",
+    "permission": "data.create",
+    "handler": "app.api.employee_absences.create_absence",
+    "csrf": true,
+    "reason": "Create ordinary production/directory data"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/employees/{employee_id}/absences/{source}/{item_id}",
+    "permission": "data.update",
+    "handler": "app.api.employee_absences.edit_absence",
+    "csrf": true,
+    "reason": "Edit ordinary production/directory data"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/employees/{employee_id}/absences/{source}/{item_id}",
+    "permission": "DENY",
+    "handler": "app.api.employee_absences.remove_absence",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/employees/{employee_id}/production-assignments",
+    "permission": "data.read",
+    "handler": "app.api.production_assignments.history",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/employees/{employee_id}/production-assignments",
+    "permission": "data.create",
+    "handler": "app.api.production_assignments.create",
+    "csrf": true,
+    "reason": "Create ordinary production/directory data"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/production-assignments/{change_id}",
+    "permission": "data.update",
+    "handler": "app.api.production_assignments.correct",
+    "csrf": true,
+    "reason": "Edit ordinary production/directory data"
+  },
+  {
+    "method": "GET",
+    "path": "/api/employees/{employee_id}/production-matrix-overrides",
+    "permission": "data.read",
+    "handler": "app.api.production_matrix_overrides.get_overrides",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/employees/{employee_id}/production-matrix-overrides",
+    "permission": "data.update",
+    "handler": "app.api.production_matrix_overrides.upsert",
+    "csrf": true,
+    "reason": "Edit ordinary production/directory data"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/production-matrix-overrides/{override_id}",
+    "permission": "DENY",
+    "handler": "app.api.production_matrix_overrides.remove",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/production-matrix",
+    "permission": "data.read",
+    "handler": "app.api.production_matrix.matrix",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/production-matrix/capabilities",
+    "permission": "data.read",
+    "handler": "app.api.matrix_dk.capabilities",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/employees/{employee_id}/production-matrix/dk/{target}",
+    "permission": "DENY",
+    "handler": "app.api.matrix_dk.assign",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/employees/{employee_id}/production-matrix/dk/{target}",
+    "permission": "DENY",
+    "handler": "app.api.matrix_dk.cancel",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/deployment/analysis",
+    "permission": "data.read",
+    "handler": "app.api.deployment.analysis",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/deployment/report",
+    "permission": "data.read",
+    "handler": "app.api.deployment.report",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/deployment/report/export",
+    "permission": "excel.export",
+    "handler": "app.api.deployment.export",
+    "csrf": false,
+    "reason": "Download existing report or in-memory export; no archive publication"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/crew-memberships",
+    "permission": "DENY",
+    "handler": "app.api.crew_memberships.change_memberships",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/objects/{item_id}/archive",
+    "permission": "DENY",
+    "handler": "app.api.object_archive.register.<locals>.archive",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/objects/{item_id}/restore",
+    "permission": "DENY",
+    "handler": "app.api.object_archive.register.<locals>.restore",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/objects/{item_id}/activity-status",
+    "permission": "DENY",
+    "handler": "app.api.object_archive.register.<locals>.status",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/subobjects/{item_id}/archive",
+    "permission": "DENY",
+    "handler": "app.api.object_archive.register.<locals>.archive",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/subobjects/{item_id}/restore",
+    "permission": "DENY",
+    "handler": "app.api.object_archive.register.<locals>.restore",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/subobjects/{item_id}/activity-status",
+    "permission": "DENY",
+    "handler": "app.api.object_archive.register.<locals>.status",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/construction-entities/environment",
+    "permission": "data.read",
+    "handler": "app.api.construction_identity.environment",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/construction-entities",
+    "permission": "data.read",
+    "handler": "app.api.construction_identity.entities",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/construction-entities/{entity_id}/hierarchy",
+    "permission": "DENY",
+    "handler": "app.api.construction_identity.hierarchy",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/vou/settings",
+    "permission": "data.read",
+    "handler": "app.api.vou_settings.get_settings",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/vou/settings",
+    "permission": "DENY",
+    "handler": "app.api.vou_settings.put_settings",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/vou/reports",
+    "permission": "data.read",
+    "handler": "app.api.vou_archive.reports",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/vou/reports/{report_id}",
+    "permission": "data.read",
+    "handler": "app.api.vou_archive.report_metadata",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/vou/reports/{report_id}/file",
+    "permission": "excel.export",
+    "handler": "app.api.vou_archive.report_file",
+    "csrf": false,
+    "reason": "Download existing report or in-memory export; no archive publication"
+  },
+  {
+    "method": "POST",
+    "path": "/api/vou/reports",
+    "permission": "data.create",
+    "handler": "app.api.vou_archive.generate_report",
+    "csrf": true,
+    "reason": "Step28 explicit workflow approval; guarded against deletion/approval/bulk branches",
+    "action": "vou.generate_archive",
+    "allowed_roles": [
+      "SYSTEM_TECHNICIAN"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/api/clean-construction-entities/aliases",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.list_construction_aliases",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/clean-construction-entities/aliases",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.create_construction_alias",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/clean-construction-entities/aliases/{alias_id}",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.update_construction_alias",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/clean-construction-entities/aliases/{alias_id}",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.delete_construction_alias",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/clean-construction-entities/match",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.match_construction_entity",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/clean-construction-entities/word-report-match",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.match_word_report_object",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/clean-construction-entities/word-report/parse",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.parse_word_report",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/clean-construction-entities/word-report/dictionaries",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.clean_word_report_dictionaries",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/clean-construction-entities/word-report/confirm",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.confirm_word_report",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/clean-construction-entities/environment",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.environment",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/clean-construction-entities/workspace",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.workspace",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/clean-construction-entities/word-report/workspace",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.word_report_workspace",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/clean-construction-entities/categories",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.categories",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/clean-construction-entities/employees",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.employees",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/clean-construction-entities/po-types",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.po_types",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/clean-construction-entities/employees/{employee_id}/assignments",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.employee_assignments",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/clean-construction-entities/employees/{employee_id}/assignments",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.add_employee_assignment",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/clean-construction-entities/employees/{employee_id}/assignments/{assignment_id}",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.edit_employee_assignment",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/clean-construction-entities/employees/{employee_id}/assignments/{assignment_id}",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.remove_employee_assignment",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/clean-construction-entities",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.listing",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/clean-construction-entities",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.create",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/clean-construction-entities/{entity_id}",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.get_card",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/clean-construction-entities/{entity_id}",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.edit",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/clean-construction-entities/{entity_id}/hierarchy",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.hierarchy",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/clean-construction-entities/{entity_id}/archive",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.archive_entity",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/clean-construction-entities/{entity_id}/restore",
+    "permission": "DENY",
+    "handler": "app.api.clean_construction.restore_entity",
+    "csrf": false,
+    "reason": "Separate CLEAN_START database/public schema; outside approved 8001 target, including read routes"
+  },
+  {
+    "method": "MOUNT",
+    "path": "/static",
+    "permission": "data.read",
+    "handler": "starlette.staticfiles.StaticFiles:C:\\Projects\\excel-ai-agent-8001\\backend\\app\\static",
+    "csrf": false,
+    "reason": "Authenticated static assets only"
+  },
+  {
+    "method": "GET",
+    "path": "/",
+    "permission": "data.read",
+    "handler": "app.main.processing_page",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/select-folder",
+    "permission": "DENY",
+    "handler": "app.main.select_folder",
+    "csrf": false,
+    "reason": "Server filesystem access / GUI side effects; local operator only pending approval"
+  },
+  {
+    "method": "GET",
+    "path": "/api/check-folder",
+    "permission": "DENY",
+    "handler": "app.main.check_folder",
+    "csrf": false,
+    "reason": "Server filesystem access / GUI side effects; local operator only pending approval"
+  },
+  {
+    "method": "POST",
+    "path": "/api/process-folder",
+    "permission": "DENY",
+    "handler": "app.main.process_reports",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/object-categories",
+    "permission": "data.read",
+    "handler": "app.main.object_categories",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/po-types",
+    "permission": "data.read",
+    "handler": "app.main.po_types",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/objects",
+    "permission": "data.read",
+    "handler": "app.main.objects",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/objects",
+    "permission": "data.create",
+    "handler": "app.main.add_object",
+    "csrf": true,
+    "reason": "Create ordinary production/directory data"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/objects/{object_id}",
+    "permission": "data.update",
+    "handler": "app.main.edit_object",
+    "csrf": true,
+    "reason": "Edit ordinary production/directory data"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/objects/{object_id}",
+    "permission": "DENY",
+    "handler": "app.main.remove_object",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/object-categories/{parent_id}/children",
+    "permission": "data.create",
+    "handler": "app.main.add_object_subcategory",
+    "csrf": true,
+    "reason": "Create ordinary production/directory data"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/object-categories/{category_id}",
+    "permission": "data.update",
+    "handler": "app.main.update_object_subcategory",
+    "csrf": true,
+    "reason": "Edit ordinary production/directory data"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/object-categories/{category_id}",
+    "permission": "DENY",
+    "handler": "app.main.remove_object_subcategory",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/po-types",
+    "permission": "data.create",
+    "handler": "app.main.add_po_type",
+    "csrf": true,
+    "reason": "Create ordinary production/directory data"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/po-types/{po_id}",
+    "permission": "data.update",
+    "handler": "app.main.update_po_type",
+    "csrf": true,
+    "reason": "Edit ordinary production/directory data"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/po-types/{po_id}",
+    "permission": "DENY",
+    "handler": "app.main.remove_po_type",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/positions",
+    "permission": "data.read",
+    "handler": "app.main.positions",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/positions",
+    "permission": "data.create",
+    "handler": "app.main.add_position",
+    "csrf": true,
+    "reason": "Create ordinary production/directory data"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/positions/{position_id}",
+    "permission": "data.update",
+    "handler": "app.main.update_position",
+    "csrf": true,
+    "reason": "Edit ordinary production/directory data"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/positions/{position_id}",
+    "permission": "DENY",
+    "handler": "app.main.remove_position",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/employees",
+    "permission": "data.read",
+    "handler": "app.main.employees",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/employees",
+    "permission": "data.create",
+    "handler": "app.main.add_employee",
+    "csrf": true,
+    "reason": "Create ordinary production/directory data"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/employees/{employee_id}",
+    "permission": "data.update",
+    "handler": "app.main.edit_employee",
+    "csrf": true,
+    "reason": "Edit ordinary production/directory data"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/employees/{employee_id}",
+    "permission": "DENY",
+    "handler": "app.main.remove_employee",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/employees/{employee_id}/archive",
+    "permission": "DENY",
+    "handler": "app.main.archive_employee",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/employees/{employee_id}/restore",
+    "permission": "DENY",
+    "handler": "app.main.restore_employee",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/employees/{employee_id}/assignments",
+    "permission": "data.read",
+    "handler": "app.main.employee_assignments",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/employees/{employee_id}/assignments",
+    "permission": "data.create",
+    "handler": "app.main.add_employee_assignment",
+    "csrf": true,
+    "reason": "Create ordinary production/directory data"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/employees/{employee_id}/assignments/{assignment_id}",
+    "permission": "data.update",
+    "handler": "app.main.edit_employee_assignment",
+    "csrf": true,
+    "reason": "Edit ordinary production/directory data"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/employees/{employee_id}/assignments/{assignment_id}",
+    "permission": "DENY",
+    "handler": "app.main.remove_employee_assignment",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/crews",
+    "permission": "data.read",
+    "handler": "app.main.crews",
+    "csrf": false,
+    "reason": "Read existing data/page without production changes"
+  },
+  {
+    "method": "POST",
+    "path": "/api/crews",
+    "permission": "data.create",
+    "handler": "app.main.add_crew",
+    "csrf": true,
+    "reason": "Create ordinary production/directory data"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/crews/{crew_id}",
+    "permission": "data.update",
+    "handler": "app.main.edit_crew",
+    "csrf": true,
+    "reason": "Edit ordinary production/directory data"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/crews/{crew_id}",
+    "permission": "DENY",
+    "handler": "app.main.remove_crew",
+    "csrf": false,
+    "reason": "Separate authority required: workflow, deletion, processing, settings or bulk changes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/employees/{employee_id}/position-transfers/capabilities",
+    "permission": "data.read",
+    "handler": "app.api.personnel_transfers.capabilities",
+    "csrf": false,
+    "reason": "Personnel transfer; session checked inside handler; Creator mapping pending for review commands"
+  },
+  {
+    "method": "GET",
+    "path": "/api/employees/{employee_id}/position-transfers",
+    "permission": "data.read",
+    "handler": "app.api.personnel_transfers.history",
+    "csrf": false,
+    "reason": "Personnel transfer; session checked inside handler; Creator mapping pending for review commands"
+  },
+  {
+    "method": "POST",
+    "path": "/api/employees/{employee_id}/position-transfers",
+    "permission": "SESSION",
+    "handler": "app.api.personnel_transfers.transfer",
+    "csrf": true,
+    "reason": "Exact user permission enforced inside personnel handler; never infer Creator from a role name"
+  },
+  {
+    "method": "POST",
+    "path": "/api/employees/{employee_id}/position-transfers/{root_id}/corrections",
+    "permission": "SESSION",
+    "handler": "app.api.personnel_transfers.correct",
+    "csrf": true,
+    "reason": "Exact user permission enforced inside personnel handler; never infer Creator from a role name"
+  },
+  {
+    "method": "POST",
+    "path": "/api/employees/{employee_id}/position-transfers/{root_id}/cancellations",
+    "permission": "SESSION",
+    "handler": "app.api.personnel_transfers.cancel",
+    "csrf": true,
+    "reason": "Exact user permission enforced inside personnel handler; never infer Creator from a role name"
+  },
+  {
+    "method": "POST",
+    "path": "/api/employees/{employee_id}/position-transfers/acting",
+    "permission": "SESSION",
+    "handler": "app.api.personnel_transfers.assign_acting",
+    "csrf": true,
+    "reason": "Existing personnel session/permission checks inside fixed handler; no new role or general authority"
+  },
+  {
+    "method": "POST",
+    "path": "/api/employees/{employee_id}/position-transfers/acting/{root_id}/end",
+    "permission": "SESSION",
+    "handler": "app.api.personnel_transfers.end_acting",
+    "csrf": true,
+    "reason": "Existing personnel session/permission checks inside fixed handler; no new role or general authority"
+  },
+  {
+    "method": "POST",
+    "path": "/api/employees/{employee_id}/position-transfers/acting/{root_id}/end-date",
+    "permission": "SESSION",
+    "handler": "app.api.personnel_transfers.change_acting_end",
+    "csrf": true,
+    "reason": "Existing personnel session/permission checks inside fixed handler; no new role or general authority"
+  },
+  {
+    "method": "POST",
+    "path": "/api/employees/{employee_id}/position-transfers/acting/{root_id}/cancel",
+    "permission": "SESSION",
+    "handler": "app.api.personnel_transfers.cancel_acting",
+    "csrf": true,
+    "reason": "Existing personnel session/permission checks inside fixed handler; no new role or general authority"
+  },
+  {
+    "method": "GET",
+    "path": "/api/employees/{employee_id}/position-transfers/planning-context",
+    "permission": "data.read",
+    "handler": "app.api.personnel_transfers.planning_context",
+    "csrf": false,
+    "reason": "Existing dated planning periods, no writes"
+  },
+  {
+    "method": "GET",
+    "path": "/api/employees/{employee_id}/position-transfers/predecessor",
+    "permission": "data.read",
+    "handler": "app.api.personnel_transfers.predecessor",
+    "csrf": false,
+    "reason": "Dated primary position on the previous day; no writes"
+  }
+]

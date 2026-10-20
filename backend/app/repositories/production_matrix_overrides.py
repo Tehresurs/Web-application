@@ -44,6 +44,9 @@ def upsert(employee_id, payload):
                 cur.execute('SELECT id FROM object_categories WHERE id=%s FOR SHARE',(values['category_id'],))
                 if not cur.fetchone():
                     raise ValueError('Категория не найдена')
+            if values.get('po_id') is not None:
+                cur.execute('SELECT id FROM po_types WHERE id=%s FOR SHARE',(values['po_id'],))
+                if not cur.fetchone():raise ValueError('ПО не найдено')
             key_fields = ('employee_id','period_key','basis_revision','scope','fact_id','assignment_item_ref','field_name','effective_from')
             where = ' AND '.join(f'{field} IS NOT DISTINCT FROM %s' for field in key_fields)
             cur.execute(f'SELECT * FROM production_matrix_overrides WHERE {where} FOR UPDATE', tuple(values[f] for f in key_fields))
@@ -51,9 +54,9 @@ def upsert(employee_id, payload):
             if old:
                 if expected != old['version']:
                     raise DirectoryConflict('Корректировка уже изменена. Обновите данные и версию')
-                cur.execute('''UPDATE production_matrix_overrides SET category_id=%s,control_mode=%s,
+                cur.execute('''UPDATE production_matrix_overrides SET category_id=%s,control_mode=%s,po_id=%s,
                     is_deleted=false,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=%s RETURNING *''',
-                    (values['category_id'],values['control_mode'],old['id']))
+                    (values['category_id'],values['control_mode'],values.get('po_id'),old['id']))
             else:
                 if expected != 0:
                     raise DirectoryConflict('Корректировка не существует. Для создания требуется version=0')

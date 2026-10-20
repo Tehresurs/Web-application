@@ -4,7 +4,7 @@ import logging
 
 from fastapi import APIRouter, File, UploadFile
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from starlette.concurrency import run_in_threadpool
 
 from app.repositories import rail_tickets
@@ -61,6 +61,8 @@ class RailTicket(BaseModel):
     employee_state_label: str | None = None
     planned_date: datetime | None = None
     position_name: str | None = None
+    assignment_po_id: int | None = None
+    assignment_category_id: int | None = None
 
 
 class TicketResponse(BaseModel):
@@ -87,6 +89,15 @@ class ObjectRequest(BaseModel):
     model_config=ConfigDict(extra="forbid")
     object_id: int | None = None
     entity_id: int | None = Field(default=None,gt=0)
+    po_id: int | None = Field(default=None,gt=0)
+    category_id: int | None = Field(default=None,gt=0)
+
+    @model_validator(mode='after')
+    def assignment_fields(self):
+        supplied={'po_id','category_id'} & self.model_fields_set
+        if supplied and (self.po_id is None or self.category_id is None or not (self.object_id or self.entity_id)):
+            raise ValueError('Выберите объект, ПО и категорию вместе')
+        return self
 
 
 class ConfirmRequest(BaseModel):
@@ -149,7 +160,8 @@ def reject(ticket_id: int,payload: ConfirmRequest):return _response(rail_tickets
 
 
 @router.patch("/{ticket_id}/object",response_model=TicketResponse,summary="Назначить объект для заезда")
-def set_object(ticket_id: int,payload: ObjectRequest):return _response(rail_tickets.set_ticket_object,ticket_id,payload.object_id,payload.entity_id)
+def set_object(ticket_id: int,payload: ObjectRequest):return _response(rail_tickets.set_ticket_object,ticket_id,payload.object_id,payload.entity_id,
+    {"po_id":payload.po_id,"initial_category_id":payload.category_id} if {"po_id","category_id"} & payload.model_fields_set else None)
 
 
 @router.post("/{ticket_id}/annul",response_model=TicketResponse,summary="Аннулировать билет без удаления истории")

@@ -4,6 +4,7 @@ from app.repositories.production_matrix import get_inputs
 from app.services.luvr_calendar import calculate_employee_month
 from app.services.production_assignments import project
 from app.services.production_matrix_overrides import resolve
+from app.services.matrix_dk import projection_enabled, capabilities, POSITION as DK_POSITION, COMMENT as DK_COMMENT
 
 RANK = {'OK':0,'WARNING':1,'CONFLICT':2}
 
@@ -36,10 +37,16 @@ def employee_matrix(employee, names, year, month):
         facts.setdefault(fact['report_date'],[]).append(fact)
     rows, checks = {}, []
     totals = dict(available_cents=0,object_cents=0,cameral_cents=0,distributed_cents=0,
-                  working_days=0,warning_days=0,conflict_days=0)
+                  working_days=0,warning_days=0,conflict_days=0,dk_cents=0)
     def name(table, value):
         return names[table].get(value) if value is not None else None
+    original_employee=employee
     for luvr in calendar['days']:
+        from app.services.personnel_positions import dated_personnel
+        employee=dated_personnel(original_employee,luvr['date'])
+        cameral_position=employee.get('requires_daily_report') is False
+        acting=employee.get('acting_assignment')
+        acting_non_reporting=bool(acting and not acting['definition'].get('requires_daily_report'))
         day = luvr['date'].isoformat()
         available = {'FULL':100,'HALF':50}.get(luvr['final_code'],0)
         calendar_unknown=(luvr['final_code']=='EMPTY' and luvr['calculation_status']=='UNKNOWN'
@@ -50,6 +57,7 @@ def employee_matrix(employee, names, year, month):
             nonlocal status
             if code not in messages: messages.append(code)
             if RANK[level] > RANK[status]: status = level
+        if employee.get('position_history_status')=='LEGACY_UNVERIFIED':issue('POSITION_HISTORY_UNVERIFIED','WARNING')
         if luvr['calculation_status'] == 'NEEDS_REVIEW':
             issue('LUVR_NEEDS_REVIEW','CONFLICT')
         elif luvr['calculation_status'] == 'UNKNOWN' and (luvr['final_code']!='EMPTY' or (day in facts and not cameral_position)):
@@ -58,7 +66,10 @@ def employee_matrix(employee, names, year, month):
             issue('LUVR_UNKNOWN','WARNING')
         elif luvr['warnings']:
             issue('LUVR_WARNINGS','WARNING')
-        periods = [] if cameral_position else [p for p in assignments['periods'] if _contains(p,day)]
+        periods = [] if cameral_position or (acting_non_reporting and day not in facts) else [p for p in assignments['periods'] if _contains(p,day)]
+        if employee.get('return_plan_required') and day not in facts:
+            boundary=employee['return_plan_from'].isoformat()
+            periods=[p for p in periods if p['basis_kind']=='ASSIGNMENT' and p['effective_from']>boundary]
         if len(periods)>1:
             issue('OVERLAPPING_ASSIGNMENT_PERIODS','CONFLICT')
         period = periods[0] if len(periods)==1 else None
@@ -66,7 +77,7 @@ def employee_matrix(employee, names, year, month):
         items = sorted(facts[day],key=stable_order) if source=='FACT' else []
         cameral = False
         automatic_cameral = False
-        if cameral_position:
+        if cameral_position or (acting_non_reporting and source!='FACT'):
             # Position policy takes precedence over uploaded reports and object
             # assignments. Source facts stay stored but do not enter this matrix.
             cameral = automatic_cameral = available>0
@@ -86,6 +97,7 @@ def employee_matrix(employee, names, year, month):
                 cameral = automatic_cameral = True
             else:
                 issue('ASSIGNMENT_UNKNOWN','WARNING')
+        dk=projection_enabled(employee,day,available)
         shares = distribute(available,len(items)) if len(periods)<=1 else [0]*len(items)
         entries = []
         for item, share in zip(items,shares):
@@ -96,9 +108,10 @@ def employee_matrix(employee, names, year, month):
             overlay = matched[0] if len(matched)==1 else None
             category = overlay['category_id'] if overlay else item.get('category_id') if fact_basis else item.get('initial_category_id')
             mode = overlay['control_mode'] if overlay else None if fact_basis else item.get('initial_control_mode')
+            po = overlay.get('po_id',item.get('po_id')) if overlay else item.get('po_id')
             # An approved absence belongs to the confirmed source and also to
             # plans inherited from that source, never to arbitrary empty plans.
-            po_missing=item.get('po_id') is None and not (fact_basis and item['id'] in approved_po_absence)
+            po_missing=po is None and not (fact_basis and item['id'] in approved_po_absence)
             if mode is None:
                 mode=employee.get('default_control_mode') or 'INSPECTION'
             if available and (po_missing or category is None or mode is None):
@@ -108,7 +121,7 @@ def employee_matrix(employee, names, year, month):
                 targets = {k:overlay[k] for k in ('scope','period_key','basis_revision','fact_id','assignment_item_id')}
                 targets['effective_from'] = day
                 targets['fields'] = {}
-                for field in ('CATEGORY','CONTROL_MODE'):
+                for field in ('CATEGORY','CONTROL_MODE','PO'):
                     existing = next((o for o in overrides if o['field_name']==field and str(o['effective_from'])==day
                         and o['scope']==source and o['period_key']==targets['period_key'] and o['basis_revision']==targets['basis_revision']
                         and (o['fact_id']==item['id'] if fact_basis else o['assignment_item_ref']==item['id'])),None)
@@ -116,14 +129,14 @@ def employee_matrix(employee, names, year, month):
                                                 'override_id':existing['id'] if existing else None}
             entry = dict(kind='OBJECT',source=source,object_id=item['object_id'],object_name=name('construction_objects',item['object_id']),
                 subobject_id=item.get('subobject_id'),subobject_name=name('construction_subobjects',item.get('subobject_id')),
-                po_id=item.get('po_id'),po_name=name('po_types',item.get('po_id')),
+                po_id=po,po_name=name('po_types',po),
                 subcontractor_id=item.get('subcontractor_id'),subcontractor_name=name('po_types',item.get('subcontractor_id')),
                 category_id=category,category_name=name('object_categories',category),control_mode=mode,
                 allowed_control_modes=employee.get('allowed_control_modes',['INSPECTION','OPERATIONAL']),
                 share_cents=share,share=share/100,share_text=f'{share/100:.2f}',
                 source_fact_id=item['id'] if fact_basis else None,assignment_item_id=None if fact_basis else item['id'],
                 source_file=item.get('source_file'),source_document_url=None,
-                report_required=bool(employee.get('requires_daily_report')) and available>0,
+                report_required=employee.get('engineering_report_required',bool(employee.get('requires_daily_report'))) and available>0,
                 report_received=source=='FACT',edit_target=targets,
                 applied_overrides=overlay.get('applied_overrides',{}) if overlay else {})
             if 'entities' in names:
@@ -135,18 +148,29 @@ def employee_matrix(employee, names, year, month):
             entries.append(dict(kind='CAMERAL',source='PLAN',object_id=None,object_name=None,category_id=None,
                 control_mode='CAMERAL',share_cents=available,share=available/100,share_text=f'{available/100:.2f}',
                 source_fact_id=None,assignment_item_id=None,report_required=False,report_received=False,edit_target=None))
+        if dk:
+            # Preserve every original entry and its provenance; only accounting changes.
+            if not entries:
+                entries.append(dict(kind='DK',source='PLAN',object_id=None,object_name=None,
+                    category_id=None,source_fact_id=None,edit_target=None,report_required=False,report_received=False))
+            for entry in entries:
+                entry.update(share_cents=0,share=0,share_text='0.00',is_dk=True,day_event='DK',
+                             excluded_from_production=True,comment=DK_COMMENT)
         object_cents = sum(e['share_cents'] for e in entries if e['kind']=='OBJECT')
         cameral_cents = sum(e['share_cents'] for e in entries if e['kind']=='CAMERAL')
         distributed = object_cents+cameral_cents
+        if dk:
+            messages=[m for m in messages if m!='ASSIGNMENT_UNKNOWN']
+            if not messages:status='OK'
         if distributed>available: issue('OVER_ALLOCATION','CONFLICT')
-        elif distributed<available: issue('UNALLOCATED_WORK_TIME','WARNING')
+        elif distributed<available and not dk: issue('UNALLOCATED_WORK_TIME','WARNING')
         occurrences = {}
         for entry in entries:
             entry.update(date=day,employee_id=employee['employee_id'],employee_name=employee['full_name'],
-                position_name=employee.get('position_name'),status=status,warnings=list(messages),
+                position_name=employee.get('display_position_name',employee.get('position_name')),position_id=acting['position_id'] if acting else employee.get('position_id'),position_definition_version_id=acting['definition_version_id'] if acting else employee.get('position_definition_version_id'),acting_root_id=str(acting['root_id']) if acting else None,status=status,warnings=list(messages),
                 luvr_final_code=luvr['final_code'],available_cents=available,
                 period_key=period['period_key'] if period else None,
-                basis_kind=period['basis_kind'] if period else 'FACTS',basis_id=period['basis_id'] if period else entry['source_fact_id'])
+                basis_kind='DK_EVENT' if entry['kind']=='DK' else period['basis_kind'] if period else 'FACTS',basis_id=period['basis_id'] if period else entry['source_fact_id'])
             if automatic_cameral:
                 entry.update(basis_kind='POSITION_RULE',basis_id=employee.get('position_id'))
             identity = (entry['kind'],entry.get('object_id'),entry.get('subobject_id'),
@@ -166,32 +190,35 @@ def employee_matrix(employee, names, year, month):
                 row.update({k:entry[k] for k in ('entity_id','parent_entity_id','current_hierarchy','subobject_name')})
             if row['source']!=source:row['source']='MIXED'
             row['total_cents'] += entry['share_cents']
-        checks.append(dict(date=day,object_cents=object_cents,cameral_cents=cameral_cents,
-            distributed_cents=distributed,available_cents=available,status=status,warnings=messages))
-        for key,value in [('available_cents',available),('object_cents',object_cents),('cameral_cents',cameral_cents),('distributed_cents',distributed)]:
+        checks.append(dict(date=day,position_name=employee.get('display_position_name',employee.get('position_name')),position_id=acting['position_id'] if acting else employee.get('position_id'),object_cents=object_cents,cameral_cents=cameral_cents,
+            distributed_cents=distributed,available_cents=available,dk_cents=available if dk else 0,
+                           is_dk=dk,day_event='DK' if dk else None,comment=DK_COMMENT if dk else None,status=status,warnings=messages))
+        for key,value in [('available_cents',available),('object_cents',object_cents),('cameral_cents',cameral_cents),('distributed_cents',distributed),('dk_cents',available if dk else 0)]:
             totals[key]+=value
         totals['working_days']+=int(available>0)
         totals['warning_days']+=int(status=='WARNING')
         totals['conflict_days']+=int(status=='CONFLICT')
+    from app.services.personnel_positions import position_on
+    employee=position_on(original_employee,date(year,month,monthrange(year,month)[1]))
     return dict(employee_id=employee['employee_id'],full_name=employee['full_name'],position_id=employee.get('position_id'),
-                position_name=employee.get('position_name'),requires_daily_report=employee.get('requires_daily_report'),
+                position_name=employee.get('position_name'),dk_eligible_position=employee.get('position_name')==DK_POSITION,dk_dates=employee.get('dk_dates',[]),requires_daily_report=employee.get('requires_daily_report'),
                 work_location=employee.get('work_location'),work_schedule=employee.get('work_schedule'),
                 luvr_days=calendar['days'],rows=list(rows.values()),checks=checks,totals=totals,
                 source_warnings=[] if cameral_position else assignments['warnings'])
 
 
-def calculate_month(year,month,employee_id=None):
-    inputs = get_inputs(year,month,employee_id)
+def calculate_month(year,month,employee_id=None,connection=None):
+    inputs = get_inputs(year,month,employee_id) if connection is None else get_inputs(year,month,employee_id,connection=connection)
     employees = [employee_matrix(e,inputs['names'],year,month) for e in inputs['employees']]
     totals = {k:sum(e['totals'][k] for e in employees) for k in
-              ('available_cents','object_cents','cameral_cents','distributed_cents','working_days','warning_days','conflict_days')}
+              ('available_cents','object_cents','cameral_cents','distributed_cents','working_days','warning_days','conflict_days','dk_cents')}
     day_totals = []
     for index in range(monthrange(year,month)[1]):
         checks = [e['checks'][index] for e in employees]
         day_totals.append(dict(date=date(year,month,index+1).isoformat(),
-            **{key:sum(c[key] for c in checks) for key in ('object_cents','cameral_cents','distributed_cents','available_cents')},
+            **{key:sum(c[key] for c in checks) for key in ('object_cents','cameral_cents','distributed_cents','available_cents','dk_cents')},
             status=max((c['status'] for c in checks),key=lambda s:RANK[s],default='OK'),
             warnings=sorted({w for c in checks for w in c['warnings']})))
-    return dict(year=year,month=month,formed=inputs['formed'],employees=employees,totals=totals,
+    return dict(year=year,month=month,formed=inputs['formed'],employees=employees,totals=totals,capabilities=capabilities(),
                 day_totals=day_totals,
                 time_unit='hundredth_of_workday',warnings=[] if inputs['formed'] else ['LUVR_MONTH_NOT_FORMED'])

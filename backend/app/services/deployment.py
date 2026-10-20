@@ -102,7 +102,7 @@ def build_report(target, matrix, details):
             report['rows'].append(dict(number=len(report['rows'])+1, employee_id=eid,
                 object_id=object_id, subobject_id=subobject_id, object_name=name,
                 organization_id=organization_id, organization_name=organization,
-                employee_name=employee['full_name'], position_name=employee.get('position_name'),
+                employee_name=employee['full_name'], position_name=cell.get('position_name',employee.get('position_name')),
                 report_description=info.get('report_description') or '',
                 equipment=info.get('equipment_description') or '',
                 phone=info.get('phone') or '', transport=transport,

@@ -71,3 +71,24 @@ body:has(#luvrNavigation:not([hidden])) .main{min-width:0}
 #luvrCalendarPage .luvr-colored-day{text-align:center;font-weight:600}
 .luvr-color-legend{display:flex;flex-wrap:wrap;gap:6px 10px;margin:10px 0 14px;font-size:12px}
 .luvr-color-key{display:inline-flex;align-items:center;padding:5px 9px;border-radius:5px;border:1px solid rgb(15 23 42 / 10%)}
+
+/* Ticket assignment: readable wrapped choices instead of OS select popups. */
+#railTicketsPage .tickets-details{font-size:14px;line-height:1.5}
+#railTicketsPage .ticket-detail-section label{min-width:0;font-size:13px;font-weight:600}
+#railTicketsPage .ticket-detail-section select[hidden]{display:none!important}
+#railTicketsPage .ticket-picker{min-width:0;max-width:100%;border:1px solid #c9d7e5;border-radius:7px;background:#fff;font-weight:400}
+#railTicketsPage .ticket-picker summary{display:block;position:relative;padding:10px 30px 10px 11px;min-height:22px;font-size:14px;line-height:1.5;white-space:normal;overflow-wrap:anywhere;cursor:pointer;color:#163658;list-style:none}
+#railTicketsPage .ticket-picker summary::-webkit-details-marker{display:none}
+#railTicketsPage .ticket-picker summary::after{content:'▾';position:absolute;right:11px;top:11px;color:#52708d}
+#railTicketsPage .ticket-picker[open] summary{border-bottom:1px solid #dce7f0;background:#f1f6fc}
+#railTicketsPage .ticket-picker[open] summary::after{content:'▴'}
+#railTicketsPage .ticket-picker summary:focus-visible,#railTicketsPage .ticket-picker-option:focus-visible{outline:2px solid #3980da;outline-offset:-2px}
+#railTicketsPage .ticket-picker-panel{padding:8px;min-width:0}
+#railTicketsPage .ticket-picker-panel input{box-sizing:border-box;width:100%;min-width:0;min-height:38px;padding:8px 10px;border:1px solid #c9d7e5;border-radius:5px;font-size:14px;font-weight:400}
+#railTicketsPage .ticket-picker-options{max-height:300px;overflow-y:auto;overflow-x:hidden;margin-top:7px;overscroll-behavior:contain}
+#railTicketsPage .ticket-picker-option{display:block;box-sizing:border-box;width:100%;max-width:100%;min-height:40px;margin:0;padding:10px;text-align:left;white-space:normal;overflow-wrap:anywhere;font:400 13px/1.5 Arial,sans-serif;color:#163658;border:0;border-bottom:1px solid #e5edf5;border-radius:0;background:#fff;cursor:pointer}
+#railTicketsPage .ticket-picker-option:hover,#railTicketsPage .ticket-picker-option[aria-selected=true]{background:#e9f2ff}
+#railTicketsPage .ticket-picker-option:disabled{color:#8290a0;cursor:not-allowed}
+#railTicketsPage .ticket-picker-empty{margin:8px;color:#63758a;font-size:13px}
+#railTicketsPage .ticket-picker[inert]{opacity:.65}
+#railTicketsPage .ticket-object-save{margin:0 11px 12px;min-height:38px;font-size:14px}

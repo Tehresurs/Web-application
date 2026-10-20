@@ -7,6 +7,7 @@ def apply_migration(conn):
         conn.execute("SET LOCAL lock_timeout='5s'")
         conn.execute('SELECT pg_advisory_xact_lock(20261008,19)')
         conn.execute((Path(__file__).with_name('migrations') / '019_production_matrix_overrides.sql').read_text(encoding='utf-8'))
+        conn.execute((Path(__file__).with_name('migrations') / '030_matrix_po_override.sql').read_text(encoding='utf-8'))
 
 
 if __name__ == '__main__':

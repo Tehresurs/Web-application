@@ -1,0 +1,877 @@
+{
+  "tables": [
+    "auth_permissions",
+    "auth_role_permissions",
+    "auth_roles",
+    "auth_security_events",
+    "auth_sessions",
+    "auth_user_roles",
+    "auth_users",
+    "construction_entities",
+    "construction_entity_hierarchy",
+    "construction_objects",
+    "construction_subobjects",
+    "crews",
+    "daily_control_fact_deletions",
+    "daily_control_fact_replacements",
+    "daily_control_results",
+    "employee_absences",
+    "employee_assignments",
+    "employee_duration_exceptions",
+    "employee_luvr_day_overrides",
+    "employee_movements",
+    "employee_sick_absence_labels",
+    "employee_sick_periods",
+    "employees",
+    "luvr_month_employees",
+    "luvr_months",
+    "luvr_settings",
+    "object_categories",
+    "object_po",
+    "po_types",
+    "positions",
+    "production_assignment_changes",
+    "production_assignment_items",
+    "production_control_mode_positions",
+    "production_matrix_dk",
+    "production_matrix_overrides",
+    "rail_tickets",
+    "report_absence_approvals",
+    "report_absence_rules",
+    "report_review_events",
+    "value_aliases",
+    "vou_settings"
+  ],
+  "functions": [
+    [
+      "construction_reference",
+      "e bigint, o bigint, s bigint",
+      false,
+      "f"
+    ],
+    [
+      "guard_construction_hierarchy",
+      "",
+      false,
+      "f"
+    ],
+    [
+      "lock_construction_structure",
+      "",
+      false,
+      "f"
+    ],
+    [
+      "mark_matrix_dk_calendar_change",
+      "",
+      false,
+      "f"
+    ],
+    [
+      "normalize_known_value",
+      "entity_type text, source_value text",
+      false,
+      "f"
+    ],
+    [
+      "register_construction_identity",
+      "",
+      false,
+      "f"
+    ],
+    [
+      "validate_construction_reference",
+      "",
+      false,
+      "f"
+    ],
+    [
+      "validate_fact_identity",
+      "",
+      false,
+      "f"
+    ],
+    [
+      "validate_production_assignment_item",
+      "",
+      false,
+      "f"
+    ],
+    [
+      "validate_production_assignment_shape",
+      "",
+      false,
+      "f"
+    ]
+  ],
+  "public_database_privileges": [
+    [
+      "ai_excel_agent",
+      "CONNECT"
+    ],
+    [
+      "ai_excel_agent",
+      "TEMPORARY"
+    ],
+    [
+      "ai_excel_agent_test",
+      "CONNECT"
+    ],
+    [
+      "ai_excel_agent_test",
+      "TEMPORARY"
+    ],
+    [
+      "postgres",
+      "CONNECT"
+    ],
+    [
+      "postgres",
+      "TEMPORARY"
+    ]
+  ],
+  "operations": [
+    {
+      "file": "backend/app/import_employees.py",
+      "line": 99,
+      "operation": "INSERT INTO",
+      "table": "positions"
+    },
+    {
+      "file": "backend/app/import_employees.py",
+      "line": 158,
+      "operation": "INSERT INTO",
+      "table": "employees"
+    },
+    {
+      "file": "backend/app/repositories/assignments.py",
+      "line": 110,
+      "operation": "INSERT INTO",
+      "table": "employee_assignments"
+    },
+    {
+      "file": "backend/app/repositories/assignments.py",
+      "line": 170,
+      "operation": "UPDATE",
+      "table": "employee_assignments"
+    },
+    {
+      "file": "backend/app/repositories/assignments.py",
+      "line": 189,
+      "operation": "DELETE FROM",
+      "table": "employee_assignments"
+    },
+    {
+      "file": "backend/app/repositories/assignments.py",
+      "line": 224,
+      "operation": "UPDATE",
+      "table": "employee_assignments"
+    },
+    {
+      "file": "backend/app/repositories/assignments.py",
+      "line": 228,
+      "operation": "INSERT INTO",
+      "table": "employee_assignments"
+    },
+    {
+      "file": "backend/app/repositories/construction_identity.py",
+      "line": 190,
+      "operation": "UPDATE",
+      "table": "construction_subobjects"
+    },
+    {
+      "file": "backend/app/repositories/construction_identity.py",
+      "line": 158,
+      "operation": "UPDATE",
+      "table": "construction_entity_hierarchy"
+    },
+    {
+      "file": "backend/app/repositories/crews.py",
+      "line": 51,
+      "operation": "INSERT INTO",
+      "table": "crews"
+    },
+    {
+      "file": "backend/app/repositories/crews.py",
+      "line": 87,
+      "operation": "UPDATE",
+      "table": "crews"
+    },
+    {
+      "file": "backend/app/repositories/crews.py",
+      "line": 118,
+      "operation": "DELETE FROM",
+      "table": "crews"
+    },
+    {
+      "file": "backend/app/repositories/crew_memberships.py",
+      "line": 23,
+      "operation": "UPDATE",
+      "table": "employees"
+    },
+    {
+      "file": "backend/app/repositories/daily_control.py",
+      "line": 61,
+      "operation": "INSERT INTO",
+      "table": "daily_control_results"
+    },
+    {
+      "file": "backend/app/repositories/daily_control_identity.py",
+      "line": 31,
+      "operation": "INSERT INTO",
+      "table": "daily_control_results"
+    },
+    {
+      "file": "backend/app/repositories/employees.py",
+      "line": 484,
+      "operation": "UPDATE",
+      "table": "employees"
+    },
+    {
+      "file": "backend/app/repositories/employees.py",
+      "line": 144,
+      "operation": "INSERT INTO",
+      "table": "positions"
+    },
+    {
+      "file": "backend/app/repositories/employees.py",
+      "line": 228,
+      "operation": "UPDATE",
+      "table": "positions"
+    },
+    {
+      "file": "backend/app/repositories/employees.py",
+      "line": 275,
+      "operation": "DELETE FROM",
+      "table": "positions"
+    },
+    {
+      "file": "backend/app/repositories/employees.py",
+      "line": 379,
+      "operation": "INSERT INTO",
+      "table": "employees"
+    },
+    {
+      "file": "backend/app/repositories/employees.py",
+      "line": 445,
+      "operation": "UPDATE",
+      "table": "employees"
+    },
+    {
+      "file": "backend/app/repositories/employees.py",
+      "line": 565,
+      "operation": "INSERT INTO",
+      "table": "crews"
+    },
+    {
+      "file": "backend/app/repositories/employees.py",
+      "line": 630,
+      "operation": "UPDATE",
+      "table": "crews"
+    },
+    {
+      "file": "backend/app/repositories/employees.py",
+      "line": 669,
+      "operation": "DELETE FROM",
+      "table": "crews"
+    },
+    {
+      "file": "backend/app/repositories/employee_absences.py",
+      "line": 26,
+      "operation": "INSERT INTO",
+      "table": "employee_absences"
+    },
+    {
+      "file": "backend/app/repositories/employee_absences.py",
+      "line": 34,
+      "operation": "INSERT INTO",
+      "table": "employee_sick_absence_labels"
+    },
+    {
+      "file": "backend/app/repositories/employee_absences.py",
+      "line": 29,
+      "operation": "UPDATE",
+      "table": "employee_absences"
+    },
+    {
+      "file": "backend/app/repositories/employee_absences.py",
+      "line": 31,
+      "operation": "UPDATE",
+      "table": "employee_sick_periods"
+    },
+    {
+      "file": "backend/app/repositories/luvr_history.py",
+      "line": 155,
+      "operation": "DELETE FROM",
+      "table": "rail_tickets"
+    },
+    {
+      "file": "backend/app/repositories/luvr_history.py",
+      "line": 156,
+      "operation": "DELETE FROM",
+      "table": "employee_movements"
+    },
+    {
+      "file": "backend/app/repositories/luvr_month.py",
+      "line": 54,
+      "operation": "UPDATE",
+      "table": "luvr_settings"
+    },
+    {
+      "file": "backend/app/repositories/luvr_month.py",
+      "line": 35,
+      "operation": "INSERT INTO",
+      "table": "luvr_month_employees"
+    },
+    {
+      "file": "backend/app/repositories/luvr_month.py",
+      "line": 77,
+      "operation": "DELETE FROM",
+      "table": "luvr_month_employees"
+    },
+    {
+      "file": "backend/app/repositories/luvr_month.py",
+      "line": 81,
+      "operation": "INSERT INTO",
+      "table": "luvr_month_employees"
+    },
+    {
+      "file": "backend/app/repositories/luvr_month.py",
+      "line": 30,
+      "operation": "INSERT INTO",
+      "table": "luvr_months"
+    },
+    {
+      "file": "backend/app/repositories/objects.py",
+      "line": 138,
+      "operation": "UPDATE",
+      "table": "construction_objects"
+    },
+    {
+      "file": "backend/app/repositories/objects.py",
+      "line": 187,
+      "operation": "INSERT INTO",
+      "table": "construction_objects"
+    },
+    {
+      "file": "backend/app/repositories/objects.py",
+      "line": 258,
+      "operation": "INSERT INTO",
+      "table": "object_categories"
+    },
+    {
+      "file": "backend/app/repositories/objects.py",
+      "line": 342,
+      "operation": "UPDATE",
+      "table": "object_categories"
+    },
+    {
+      "file": "backend/app/repositories/objects.py",
+      "line": 423,
+      "operation": "DELETE FROM",
+      "table": "object_categories"
+    },
+    {
+      "file": "backend/app/repositories/objects.py",
+      "line": 432,
+      "operation": "UPDATE",
+      "table": "object_categories"
+    },
+    {
+      "file": "backend/app/repositories/objects.py",
+      "line": 477,
+      "operation": "INSERT INTO",
+      "table": "po_types"
+    },
+    {
+      "file": "backend/app/repositories/objects.py",
+      "line": 531,
+      "operation": "UPDATE",
+      "table": "po_types"
+    },
+    {
+      "file": "backend/app/repositories/objects.py",
+      "line": 589,
+      "operation": "DELETE FROM",
+      "table": "po_types"
+    },
+    {
+      "file": "backend/app/repositories/positions.py",
+      "line": 18,
+      "operation": "INSERT INTO",
+      "table": "positions"
+    },
+    {
+      "file": "backend/app/repositories/positions.py",
+      "line": 38,
+      "operation": "UPDATE",
+      "table": "positions"
+    },
+    {
+      "file": "backend/app/repositories/production_assignments.py",
+      "line": 159,
+      "operation": "DELETE FROM",
+      "table": "production_assignment_items"
+    },
+    {
+      "file": "backend/app/repositories/production_assignments.py",
+      "line": 149,
+      "operation": "UPDATE",
+      "table": "production_assignment_changes"
+    },
+    {
+      "file": "backend/app/repositories/production_assignments.py",
+      "line": 169,
+      "operation": "INSERT INTO",
+      "table": "production_assignment_items"
+    },
+    {
+      "file": "backend/app/repositories/production_assignments.py",
+      "line": 163,
+      "operation": "INSERT INTO",
+      "table": "production_assignment_changes"
+    },
+    {
+      "file": "backend/app/repositories/production_matrix_overrides.py",
+      "line": 80,
+      "operation": "UPDATE",
+      "table": "production_matrix_overrides"
+    },
+    {
+      "file": "backend/app/repositories/production_matrix_overrides.py",
+      "line": 57,
+      "operation": "UPDATE",
+      "table": "production_matrix_overrides"
+    },
+    {
+      "file": "backend/app/repositories/production_matrix_overrides.py",
+      "line": 65,
+      "operation": "INSERT INTO",
+      "table": "production_matrix_overrides"
+    },
+    {
+      "file": "backend/app/repositories/rail_tickets.py",
+      "line": 138,
+      "operation": "INSERT INTO",
+      "table": "rail_tickets"
+    },
+    {
+      "file": "backend/app/repositories/rail_tickets.py",
+      "line": 181,
+      "operation": "UPDATE",
+      "table": "rail_tickets"
+    },
+    {
+      "file": "backend/app/repositories/rail_tickets.py",
+      "line": 239,
+      "operation": "UPDATE",
+      "table": "rail_tickets"
+    },
+    {
+      "file": "backend/app/repositories/rail_tickets.py",
+      "line": 280,
+      "operation": "UPDATE",
+      "table": "rail_tickets"
+    },
+    {
+      "file": "backend/app/repositories/rail_tickets.py",
+      "line": 295,
+      "operation": "UPDATE",
+      "table": "rail_tickets"
+    },
+    {
+      "file": "backend/app/repositories/rail_tickets.py",
+      "line": 143,
+      "operation": "UPDATE",
+      "table": "rail_tickets"
+    },
+    {
+      "file": "backend/app/repositories/rail_tickets.py",
+      "line": 235,
+      "operation": "INSERT INTO",
+      "table": "employee_movements"
+    },
+    {
+      "file": "backend/app/repositories/rail_tickets.py",
+      "line": 271,
+      "operation": "UPDATE",
+      "table": "rail_tickets"
+    },
+    {
+      "file": "backend/app/repositories/rail_tickets.py",
+      "line": 335,
+      "operation": "UPDATE",
+      "table": "rail_tickets"
+    },
+    {
+      "file": "backend/app/repositories/rail_tickets.py",
+      "line": 306,
+      "operation": "DELETE FROM",
+      "table": "employee_movements"
+    },
+    {
+      "file": "backend/app/repositories/rail_tickets.py",
+      "line": 331,
+      "operation": "INSERT INTO",
+      "table": "employee_movements"
+    },
+    {
+      "file": "backend/app/repositories/report_review.py",
+      "line": 26,
+      "operation": "INSERT INTO",
+      "table": "report_review_events"
+    },
+    {
+      "file": "backend/app/repositories/report_review.py",
+      "line": 61,
+      "operation": "UPDATE",
+      "table": "report_absence_rules"
+    },
+    {
+      "file": "backend/app/repositories/report_review.py",
+      "line": 51,
+      "operation": "INSERT INTO",
+      "table": "report_absence_rules"
+    },
+    {
+      "file": "backend/app/repositories/report_review.py",
+      "line": 54,
+      "operation": "INSERT INTO",
+      "table": "report_absence_approvals"
+    },
+    {
+      "file": "backend/app/repositories/report_review.py",
+      "line": 102,
+      "operation": "INSERT INTO",
+      "table": "employee_assignments"
+    },
+    {
+      "file": "backend/app/repositories/subobjects.py",
+      "line": 81,
+      "operation": "INSERT INTO",
+      "table": "construction_subobjects"
+    },
+    {
+      "file": "backend/app/repositories/subobjects.py",
+      "line": 104,
+      "operation": "UPDATE",
+      "table": "construction_subobjects"
+    },
+    {
+      "file": "backend/app/repositories/subobjects.py",
+      "line": 183,
+      "operation": "UPDATE",
+      "table": "construction_subobjects"
+    },
+    {
+      "file": "backend/app/repositories/subobjects.py",
+      "line": 185,
+      "operation": "UPDATE",
+      "table": "daily_control_results"
+    },
+    {
+      "file": "backend/app/repositories/subobjects.py",
+      "line": 72,
+      "operation": "INSERT INTO",
+      "table": "construction_subobjects"
+    },
+    {
+      "file": "backend/app/repositories/value_aliases.py",
+      "line": 79,
+      "operation": "INSERT INTO",
+      "table": "value_aliases"
+    },
+    {
+      "file": "backend/app/repositories/value_aliases.py",
+      "line": 102,
+      "operation": "UPDATE",
+      "table": "value_aliases"
+    },
+    {
+      "file": "backend/app/repositories/value_aliases.py",
+      "line": 109,
+      "operation": "DELETE FROM",
+      "table": "value_aliases"
+    },
+    {
+      "file": "backend/app/services/matrix_dk.py",
+      "line": 51,
+      "operation": "DELETE FROM",
+      "table": "production_matrix_dk"
+    },
+    {
+      "file": "backend/app/services/matrix_dk.py",
+      "line": 66,
+      "operation": "INSERT INTO",
+      "table": "production_matrix_dk"
+    },
+    {
+      "file": "backend/app/services/matrix_dk.py",
+      "line": 69,
+      "operation": "DELETE FROM",
+      "table": "production_matrix_dk"
+    },
+    {
+      "file": "backend/app/services/matrix_report_service.py",
+      "line": 98,
+      "operation": "DELETE FROM",
+      "table": "production_matrix_overrides"
+    },
+    {
+      "file": "backend/app/services/matrix_report_service.py",
+      "line": 99,
+      "operation": "DELETE FROM",
+      "table": "daily_control_results"
+    },
+    {
+      "file": "backend/app/services/matrix_report_service.py",
+      "line": 105,
+      "operation": "INSERT INTO",
+      "table": "daily_control_fact_replacements"
+    },
+    {
+      "file": "backend/app/services/matrix_report_service.py",
+      "line": 124,
+      "operation": "INSERT INTO",
+      "table": "daily_control_fact_deletions"
+    },
+    {
+      "file": "backend/app/services/matrix_report_service.py",
+      "line": 126,
+      "operation": "DELETE FROM",
+      "table": "production_matrix_overrides"
+    },
+    {
+      "file": "backend/app/services/matrix_report_service.py",
+      "line": 127,
+      "operation": "DELETE FROM",
+      "table": "daily_control_results"
+    },
+    {
+      "file": "backend/app/services/user_auth.py",
+      "line": 31,
+      "operation": "INSERT INTO",
+      "table": "auth_security_events"
+    },
+    {
+      "file": "backend/app/services/user_auth.py",
+      "line": 78,
+      "operation": "UPDATE",
+      "table": "auth_sessions"
+    },
+    {
+      "file": "backend/app/services/user_auth.py",
+      "line": 83,
+      "operation": "UPDATE",
+      "table": "auth_sessions"
+    },
+    {
+      "file": "backend/app/services/user_auth.py",
+      "line": 56,
+      "operation": "INSERT INTO",
+      "table": "auth_sessions"
+    },
+    {
+      "file": "backend/app/services/vou_settings.py",
+      "line": 64,
+      "operation": "INSERT INTO",
+      "table": "vou_settings"
+    }
+  ],
+  "sequences": [
+    [
+      "auth_permissions",
+      "auth_permissions_id_seq",
+      "i"
+    ],
+    [
+      "auth_roles",
+      "auth_roles_id_seq",
+      "i"
+    ],
+    [
+      "auth_security_events",
+      "auth_security_events_id_seq",
+      "i"
+    ],
+    [
+      "auth_sessions",
+      "auth_sessions_id_seq",
+      "i"
+    ],
+    [
+      "auth_users",
+      "auth_users_id_seq",
+      "i"
+    ],
+    [
+      "construction_entities",
+      "construction_entities_id_seq",
+      "a"
+    ],
+    [
+      "construction_objects",
+      "construction_objects_id_seq",
+      "a"
+    ],
+    [
+      "construction_subobjects",
+      "construction_subobjects_id_seq",
+      "a"
+    ],
+    [
+      "crews",
+      "crews_id_seq",
+      "a"
+    ],
+    [
+      "daily_control_fact_deletions",
+      "daily_control_fact_deletions_id_seq",
+      "a"
+    ],
+    [
+      "daily_control_fact_replacements",
+      "daily_control_fact_replacements_id_seq",
+      "a"
+    ],
+    [
+      "daily_control_results",
+      "daily_control_results_id_seq",
+      "a"
+    ],
+    [
+      "employee_absences",
+      "employee_absences_id_seq",
+      "a"
+    ],
+    [
+      "employee_assignments",
+      "employee_assignments_id_seq",
+      "i"
+    ],
+    [
+      "employee_duration_exceptions",
+      "employee_duration_exceptions_id_seq",
+      "a"
+    ],
+    [
+      "employee_luvr_day_overrides",
+      "employee_luvr_day_overrides_id_seq",
+      "a"
+    ],
+    [
+      "employee_movements",
+      "employee_movements_id_seq",
+      "a"
+    ],
+    [
+      "employee_sick_periods",
+      "employee_sick_periods_id_seq",
+      "a"
+    ],
+    [
+      "employees",
+      "employees_id_seq",
+      "a"
+    ],
+    [
+      "luvr_month_employees",
+      "luvr_month_employees_id_seq",
+      "a"
+    ],
+    [
+      "object_categories",
+      "object_categories_id_seq",
+      "a"
+    ],
+    [
+      "object_po",
+      "object_po_id_seq",
+      "a"
+    ],
+    [
+      "po_types",
+      "po_types_id_seq",
+      "a"
+    ],
+    [
+      "positions",
+      "positions_id_seq",
+      "a"
+    ],
+    [
+      "production_assignment_changes",
+      "production_assignment_changes_id_seq",
+      "a"
+    ],
+    [
+      "production_assignment_items",
+      "production_assignment_items_id_seq",
+      "a"
+    ],
+    [
+      "production_matrix_overrides",
+      "production_matrix_overrides_id_seq",
+      "a"
+    ],
+    [
+      "rail_tickets",
+      "rail_tickets_id_seq",
+      "a"
+    ],
+    [
+      "report_review_events",
+      "report_review_events_id_seq",
+      "a"
+    ],
+    [
+      "value_aliases",
+      "value_aliases_id_seq",
+      "a"
+    ]
+  ],
+  "public_schema_privileges": [
+    [
+      "public",
+      "USAGE"
+    ]
+  ],
+  "public_function_execute": [
+    [
+      "construction_reference"
+    ],
+    [
+      "guard_construction_hierarchy"
+    ],
+    [
+      "lock_construction_structure"
+    ],
+    [
+      "mark_matrix_dk_calendar_change"
+    ],
+    [
+      "normalize_known_value"
+    ],
+    [
+      "register_construction_identity"
+    ],
+    [
+      "validate_construction_reference"
+    ],
+    [
+      "validate_fact_identity"
+    ],
+    [
+      "validate_production_assignment_item"
+    ],
+    [
+      "validate_production_assignment_shape"
+    ]
+  ],
+  "views": [
+    [
+      "construction_entity_current"
+    ]
+  ],
+  "password_encryption": "scram-sha-256"
+}

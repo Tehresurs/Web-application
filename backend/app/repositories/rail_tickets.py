@@ -42,6 +42,20 @@ def _employee(cursor, full_name, lock=False):
 def _view(cursor,ticket,duplicate=False):
     item=dict(ticket)
     identity.describe(cursor.connection,item)
+    item['assignment_po_id']=None;item['assignment_category_id']=None
+    cursor.execute("SELECT to_regclass('production_assignment_items') AS installed")
+    if cursor.fetchone()['installed'] is not None:
+        cursor.execute("""SELECT i.po_id,i.initial_category_id FROM production_assignment_items i
+            JOIN production_assignment_changes c ON c.id=i.change_id WHERE c.source_ticket_id=%s
+            AND ((%s::bigint IS NOT NULL AND i.entity_id=%s) OR
+                 (%s::bigint IS NULL AND i.object_id=%s)) ORDER BY c.effective_from DESC,c.id DESC LIMIT 1""",
+            (ticket['id'],ticket.get('entity_id'),ticket.get('entity_id'),ticket.get('entity_id'),ticket.get('object_id'))) if identity.enabled(cursor.connection) else cursor.execute(
+            """SELECT i.po_id,i.initial_category_id FROM production_assignment_items i
+            JOIN production_assignment_changes c ON c.id=i.change_id
+            WHERE c.source_ticket_id=%s AND i.object_id=%s ORDER BY c.effective_from DESC,c.id DESC LIMIT 1""",
+            (ticket['id'],ticket.get('object_id')))
+        assignment=cursor.fetchone()
+        if assignment:item.update(assignment_po_id=assignment['po_id'],assignment_category_id=assignment['initial_category_id'])
     item['full_name_raw']=ticket['full_name']
     item["duplicate"]=duplicate
     item["employee_name"]=None;item["employee_is_archived"]=False
@@ -230,7 +244,7 @@ def confirm_ticket(ticket_id, employee_id=None):
         return view
 
 
-def set_ticket_object(ticket_id,object_id,entity_id=None):
+def set_ticket_object(ticket_id,object_id,entity_id=None,assignment_fields=None):
     from app.repositories.object_archive import require_assignable
     with get_connection() as conn, conn.cursor(row_factory=dict_row) as cursor:
         cursor.execute('SELECT pg_advisory_xact_lock(20261007,1601)')
@@ -239,6 +253,13 @@ def set_ticket_object(ticket_id,object_id,entity_id=None):
         elif entity_id is not None:identity.prepare(conn,dict(entity_id=entity_id))
         ticket=_ticket(cursor,ticket_id,lock=True)
         if ticket['status']=='ANNULLED':raise DirectoryConflict('Сначала восстановите билет')
+        if assignment_fields is not None:
+            if ticket['status']!='CONFIRMED':raise DirectoryConflict('Сначала подтвердите сотрудника по билету, затем сохраните ПО и категорию')
+            if not (object_id or entity_id) or not assignment_fields.get('po_id') or not assignment_fields.get('initial_category_id'):
+                raise ValueError('Выберите объект, ПО и категорию вместе')
+            for table,field in (('po_types','po_id'),('object_categories','initial_category_id')):
+                cursor.execute(f'SELECT id FROM {table} WHERE id=%s',(assignment_fields[field],))
+                if cursor.fetchone() is None:raise DirectoryNotFound('ПО или категория не найдены')
         view=_view(cursor,ticket)
         if view.get("movement_type")!="ARRIVAL":raise DirectoryConflict("Объект назначается только для заезда")
         if identities:
@@ -249,7 +270,7 @@ def set_ticket_object(ticket_id,object_id,entity_id=None):
                 if unchanged:item={k:ticket.get(k) for k in ('object_id','entity_id')}
             cursor.execute('UPDATE rail_tickets SET object_id=%s,entity_id=%s,updated_at=CURRENT_TIMESTAMP WHERE id=%s RETURNING *',(item['object_id'],item['entity_id'],ticket_id))
             updated=cursor.fetchone()
-            sync_production_assignment(conn,updated,previous_object_id=ticket.get('object_id'),previous_entity_id=ticket.get('entity_id'))
+            sync_production_assignment(conn,updated,previous_object_id=ticket.get('object_id'),previous_entity_id=ticket.get('entity_id'),assignment_fields=assignment_fields)
             return _view(cursor,updated)
         if object_id is not None:
             if object_id != ticket.get('object_id'):
@@ -258,7 +279,7 @@ def set_ticket_object(ticket_id,object_id,entity_id=None):
             if cursor.fetchone() is None:raise DirectoryNotFound("Объект не найден")
         cursor.execute("UPDATE rail_tickets SET object_id=%s,updated_at=CURRENT_TIMESTAMP WHERE id=%s RETURNING *",(object_id,ticket_id))
         updated=cursor.fetchone()
-        sync_production_assignment(conn,updated,previous_object_id=ticket.get('object_id'))
+        sync_production_assignment(conn,updated,previous_object_id=ticket.get('object_id'),assignment_fields=assignment_fields)
         return _view(cursor,updated)
 
 

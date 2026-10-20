@@ -1,0 +1,13 @@
+"use strict";
+const $=id=>document.getElementById(id), names={1:"Инженер ПИЛ",2:"Ведущий инженер",3:"Руководитель СК"},today="2030-01-20";
+let orders=[{date:"2030-01-01",position:1,reason:"Начало неизвестно; наблюдение на дату переноса"}],confirmed=false;
+const currentAt=day=>orders.filter(o=>o.date<=day).at(-1);
+const fmt=day=>day?day.split("-").reverse().join("."):"по настоящее время";
+function render(){orders.sort((a,b)=>a.date.localeCompare(b.date));$("history").replaceChildren();orders.forEach((o,i)=>{const tr=document.createElement("tr"),next=orders[i+1],end=next?new Date(Date.parse(next.date+"T00:00:00Z")-86400000).toISOString().slice(0,10):null;[names[o.position],fmt(o.date)+" — "+fmt(end),o.date>today?"Запланирован":next&&next.date<=today?"Завершён":"Действует",o.reason||"—"].forEach(text=>{const td=document.createElement("td");td.textContent=text;tr.append(td)});$("history").append(tr)});$("version").textContent="Версия "+(orders.length-1);$("current").textContent=names[currentAt(today).position];$("dialogCurrent").textContent=$("current").textContent;}
+function resetConfirm(){confirmed=false;$("submit").textContent="Проверить перевод";$("impact").hidden=true;$("error").textContent="";}
+$("open").onclick=()=>{if($("role").value!=="tech")return;resetConfirm();$("dialog").showModal();};
+$("cancel").onclick=()=>$("dialog").close();
+$("role").onchange=()=>{$("open").hidden=$("role").value!=="tech";$("dialog").close();};
+for(const id of ["date","position","reason"])$(id).addEventListener("input",resetConfirm);
+$("form").onsubmit=e=>{e.preventDefault();const date=$("date").value,position=Number($("position").value);if($("role").value!=="tech")return;if(!date||!names[position]||date<="2030-01-01"){$("error").textContent="Нужны должность и дата после 01.01.2030. Ранние сведения требуют документального восстановления.";return}if(orders.some(o=>o.date===date)){$("error").textContent="На эту дату уже есть кадровое событие.";return}const previous=currentAt(date);if(previous.position===position){$("error").textContent="На выбранную дату уже действует эта должность.";return}if(!confirmed){$("impact").hidden=false;$("impact").textContent=names[previous.position]+" → "+names[position]+" с "+fmt(date)+(date<today?". Перевод задним числом: потребуется оценка исторических расчётов.":". Экипаж и назначения сохраняются.");confirmed=true;$("submit").textContent="Подтвердить перевод в макете";return}orders.push({date,position,reason:$("reason").value.trim()});render();$("dialog").close();$("done").textContent="Перевод добавлен в макет. Рабочие данные не изменялись.";};
+render();

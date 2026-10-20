@@ -1,0 +1,41 @@
+const fs=require('node:fs'),assert=require('node:assert/strict'),path=require('node:path');
+(async()=>{
+ const credentials=JSON.parse(fs.readFileSync('backend/output/demo-check/browser.json','utf8'));
+ const cdp='http://127.0.0.1:9234';
+ const page=await(await fetch(cdp+'/json/new?about:blank',{method:'PUT'})).json();
+ const ws=new WebSocket(page.webSocketDebuggerUrl);await new Promise(r=>ws.addEventListener('open',r,{once:true}));
+ let id=0;const pending=new Map(),errors=[],httpErrors=[];
+ ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.id){const p=pending.get(m.id);pending.delete(m.id);m.error?p.reject(m.error):p.resolve(m.result);}if(m.method==='Runtime.exceptionThrown')errors.push(m.params);if(m.method==='Network.responseReceived'&&m.params.response.status>=400)httpErrors.push({url:m.params.response.url,status:m.params.response.status});};
+ const call=(method,params={})=>new Promise((resolve,reject)=>{pending.set(++id,{resolve,reject});ws.send(JSON.stringify({id,method,params}));});
+ const ev=async expression=>{const r=await call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
+ const wait=async expression=>{for(let i=0;i<250;i++){if(await ev(expression))return;await new Promise(r=>setTimeout(r,100));}throw Error('Timeout '+expression);};
+ try{
+  await call('Runtime.enable');await call('Network.enable');await call('Network.setCacheDisabled',{cacheDisabled:true});
+  await call('Network.setExtraHTTPHeaders',{headers:{Authorization:credentials.authorization}});
+  await call('Page.navigate',{url:'http://127.0.0.1:18001/'});
+  await wait(`document.querySelector('.demo-viewer-banner') && typeof showMainSection==='function'`);
+  assert.equal(await ev(`window.TEHRESURS_READ_ONLY`),true);
+  await ev(`document.getElementById('employeesNavButton').click()`);
+  await wait(`document.querySelector('#employeeTableBody tr') || document.querySelector('#employeeList tr') || document.querySelectorAll('#employeesPage tbody tr').length>0`);
+  await wait(`document.querySelector('#employeeProfile h2')`);
+  assert.equal(await ev(`getComputedStyle(document.getElementById('addEmployeeButton')).display`),'none');
+  await ev(`document.getElementById('luvrNavButton').click();document.getElementById('productionMatrixNavButton').click()`);
+  await wait(`!document.getElementById('pmRefresh').disabled && document.querySelector('.pm-employee')`);
+  await ev(`document.querySelector('.pm-employee .pm-name button').click()`);
+  await wait(`document.querySelector('.pm-inner')`);
+  await ev(`document.getElementById('luvrMonthNavButton').click()`);
+  await wait(`document.querySelector('#luvrMonthBody tr')`);
+  await ev(`document.getElementById('deploymentNavButton').click()`);
+  await wait(`!document.getElementById('deploymentReport').hidden`);
+  await ev(`document.getElementById('deploymentAnalysisTab').click()`);
+  await wait(`document.querySelector('#analysisChartProduction svg')`);
+  await ev(`document.getElementById('vouNavButton').click();document.getElementById('vouPersonnelTab').click()`);
+  await wait(`!document.getElementById('vouPersonnelScroll').hidden`);
+  assert.equal(await ev(`getComputedStyle(document.getElementById('vouGenerate')).display`),'none');
+  assert.equal(await ev(`fetch('/api/production-matrix/capabilities').then(r=>r.json()).then(b=>b.item.can_manage_dk)`),false);
+  const raw=await fetch('http://127.0.0.1:18001/api/employees/1',{method:'PATCH',headers:{Authorization:credentials.authorization,'Content-Type':'application/json'},body:'{}'});
+  assert.equal(raw.status,403);
+  console.log(JSON.stringify({employees:true,employeeCard:true,matrix:true,luvr:true,charts:true,personnel:true,writeControlsHidden:true,rawPatchBlocked:true,jsErrors:errors.length,httpErrors}));
+  assert.equal(errors.length,0,JSON.stringify(errors));
+ }finally{ws.close();await fetch(cdp+'/json/close/'+page.id);}
+})().catch(e=>{console.error(e);process.exitCode=1});

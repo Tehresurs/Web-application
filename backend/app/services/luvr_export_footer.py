@@ -13,11 +13,11 @@ FOOTER_MAPPING={'E90':'developer_position_snapshot','K90':'developer_name_snapsh
 LEGEND_CELLS=tuple(f'A{row}' for row in range(96,102))
 
 
-def export_final_month(year,month,employee_ids=None):
+def export_final_month(year,month,employee_ids=None,*,row_keys=None):
     snapshot=get_header_snapshot(year,month)
     values=footer_values(snapshot)
     data=month_calendar(year,month)
-    table=render_table(snapshot,data,employee_ids)
+    table=render_table(snapshot,data,employee_ids) if row_keys is None else render_table(snapshot,data,employee_ids,row_keys=row_keys)
     return compact_month(fill_footer(table,values),len(data['employees']))
 
 

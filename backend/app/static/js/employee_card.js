@@ -121,6 +121,7 @@ async function editEmployeeCard(item){
             for(const p of positions.items.filter(p=>(!location.value||p.work_location===location.value)&&(!schedule.value||p.work_schedule===schedule.value))){const option=employeeNode('option',p.name);option.value=p.id;position.append(option);}
             position.value=selected;if(!position.value){position.value='';fields.specialty.value='';position.setCustomValidity('Выберите существующую должность с указанными местом работы и графиком');}else position.setCustomValidity('');
         };location.onchange=schedule.onchange=filterPositions;
+        if(item.personnel_history_installed){position.disabled=true;location.disabled=true;schedule.disabled=true;form.append(employeeNode('p','Основная должность изменяется действием «Перевести» в карточке сотрудника.','ui-muted'));}
         form.append(employeeNode('p','Место работы и график изменяются выбором должности с нужными параметрами. Параметры других сотрудников не меняются.','ui-muted'));
         const actions=employeeNode('div',null,'employee-profile-actions'),save=employeeNode('button','Сохранить','ui-button ui-button-primary'),cancel=employeeNode('button','Отмена','ui-button'),error=employeeNode('p',null,'ui-error');error.hidden=true;
         save.type='submit';cancel.type='button';cancel.onclick=()=>renderEmployeeProfile();actions.append(save,cancel);form.append(actions,error);

@@ -1,0 +1,85 @@
+/* VOU presentation only; shared Techresurs tokens and existing components. */
+.vou-page-title{display:none}
+body:has(#vouPage:not([hidden])) .employee-default-page-title{display:none}
+body:has(#vouPage:not([hidden])) .vou-page-title{display:block}
+#vouPage[hidden],#vouPage [hidden]{display:none!important}
+#vouPage{display:grid;gap:20px;min-width:0;color:#163658}
+#vouPage .ui-card{padding:24px}
+#vouPage .vou-create-card{border-top:3px solid #245db0}
+#vouPage .vou-section-heading,.vou-settings-card .vou-section-heading{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+#vouPage h2,.vou-settings-card h2{margin:0;font-size:19px;line-height:1.4;color:#163658}
+#vouPage .vou-section-heading p,.vou-settings-card>p{margin:7px 0 0;color:#63758a;font-size:13px;line-height:1.6}
+.vou-eyebrow{display:block;font-size:10px;letter-spacing:1.2px;font-weight:700;color:#5b7c9e;margin-bottom:7px}
+#vouPage .vou-format{background:#eaf4fc;color:#17638d;padding:7px 12px;white-space:nowrap}
+#vouPage .vou-generate-form{display:flex;align-items:flex-end;flex-wrap:wrap;gap:12px;margin:24px 0 12px;padding:18px;background:#f5f8fc;border:1px solid #e3ebf5;border-radius:9px}
+#vouPage .vou-generate-form label,.vou-settings-form label{display:grid;gap:7px;color:#52647b;font-size:12px;font-weight:600}
+#vouPage .vou-generate-form label{min-width:200px}
+#vouPage .ui-button{font-size:13px;min-height:40px}
+#vouPage .ui-button-primary,.vou-settings-card .ui-button-primary{background:#245db0;border-color:#245db0;color:#fff;font-weight:600}
+#vouPage .ui-button:disabled{opacity:.6;cursor:wait}
+#vouPage .vou-scope-note{font-size:12px;line-height:1.6;color:#63758a;margin:0}
+.vou-status{font-size:13px;line-height:1.6;overflow-wrap:anywhere}
+.vou-status:empty{display:none}
+#vouPage .vou-status[data-state=loading]{color:#245db0}
+#vouPage .vou-status[data-state=error]{padding:12px 14px;color:#954b0b;background:#fff6e7;border:1px solid #f5d6a5;border-radius:7px}
+#vouPage .vou-status[data-state=success]{padding:12px 14px;color:#216b4d;background:#edf8f1;border:1px solid #cce8d6;border-radius:7px}
+#vouPage .vou-warning-list{font-size:12px;color:#8b5a16;line-height:1.7;background:#fff9ee;border-radius:7px;padding:12px 16px 12px 32px;margin-bottom:0}
+#vouPage .vou-warning-list:empty{display:none}
+#vouPage .vou-empty{text-align:center;padding:42px 20px;color:#63758a;background:#f8fafd;border:1px dashed #d6e2ef;border-radius:9px;margin-top:16px}
+#vouPage .vou-empty-symbol{display:inline-grid;place-items:center;width:46px;height:46px;background:#eaf1fa;border-radius:12px;color:#6587ae;font-size:24px;margin-bottom:12px}
+#vouPage .vou-empty h3{font-size:15px;color:#315170;margin:0 0 8px}
+#vouPage .vou-empty p{font-size:13px;line-height:1.6;margin:0}
+#vouPage .vou-table{table-layout:fixed;min-width:700px;margin-top:12px}
+#vouPage .vou-table th{background:#edf3fb;color:#315170;padding:12px;font-weight:600;line-height:1.5}
+#vouPage .vou-table td{padding:14px 12px;font-size:13px;line-height:1.6;vertical-align:middle}
+#vouPage .vou-table tr:hover{background:#f7faff}
+#vouPage .vou-table th:first-child{width:13%}
+#vouPage .vou-table th:nth-child(2){width:20%}
+#vouPage .vou-table th:nth-child(3){width:32%}
+#vouPage .vou-table th:nth-child(4){width:17%}
+#vouPage .vou-table th:nth-child(5){width:18%}
+#vouPage .vou-table td:nth-child(4){font-variant-numeric:tabular-nums;font-weight:600}
+#vouPage .vou-download{color:#1959a3;text-decoration:none;font-size:12px;white-space:nowrap;display:inline-block;border:1px solid #cbdcf1;border-radius:6px;padding:6px 10px;background:#f1f6fd}
+#vouPage .vou-download:hover{background:#e4eefb}
+#vouPage a:focus-visible{outline:3px solid #80b2ff;outline-offset:2px}
+.vou-settings-card{max-width:850px;border-top:3px solid #245db0}
+.vou-settings-form{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:24px}
+.vou-settings-form label:first-child,.vou-settings-form label:nth-child(4),.vou-settings-form label:nth-child(5){grid-column:1/-1}
+.vou-settings-form button{justify-self:start;grid-column:1/-1;margin-top:4px}
+.vou-settings-form input{font-weight:400}
+@media(max-width:700px){#vouPage .ui-card{padding:16px}#vouPage .vou-generate-form{padding:12px;align-items:stretch}#vouPage .vou-generate-form label{width:100%;min-width:0}#vouPage .vou-generate-form button{flex:1 1 100%}.vou-settings-form{grid-template-columns:1fr}}
+
+body:has(:is(#vouPage,#settingsPage):not([hidden])) .sidebar{background:#132e50;color:#dbe7f8}
+body:has(:is(#vouPage,#settingsPage):not([hidden])) .sidebar .logo,
+body:has(:is(#vouPage,#settingsPage):not([hidden])) .sidebar .logo strong,
+body:has(:is(#vouPage,#settingsPage):not([hidden])) .sidebar .nav-item{color:#dbe7f8}
+body:has(:is(#vouPage,#settingsPage):not([hidden])) .sidebar .logo,
+body:has(:is(#vouPage,#settingsPage):not([hidden])) .sidebar .sidebar-footer{border-color:#29476a}
+body:has(:is(#vouPage,#settingsPage):not([hidden])) .sidebar .nav-item.active{background:#255185;color:#fff}
+body:has(:is(#vouPage,#settingsPage):not([hidden])) .sidebar .nav-item:hover{background:#214367}
+body:has(:is(#vouPage,#settingsPage):not([hidden])) .sidebar .sidebar-footer,
+body:has(:is(#vouPage,#settingsPage):not([hidden])) .sidebar .version{color:#a7bfd9}
+
+#vouPage .vou-tabs{margin:0;gap:16px}
+#vouPage .vou-tabs .ui-tab{padding:12px 4px;font-size:14px}
+
+#vouPage .vou-personnel-summary{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:13px 16px;margin-top:18px;background:#edf5ff;border:1px solid #d8e7fa;border-radius:8px;font-size:13px}
+#vouPage .vou-personnel-summary strong{font-size:20px;color:#1959a3;margin-left:12px;font-variant-numeric:tabular-nums}
+#vouPage .vou-personnel-scroll{max-height:65vh;overflow:auto;margin-top:18px;border:1px solid #d8e3ef;border-radius:8px;position:relative;isolation:isolate}
+#vouPage .vou-personnel-table{border-collapse:separate;border-spacing:0;table-layout:fixed;width:max-content;font-size:12px;color:#24425e}
+#vouPage .vou-personnel-table th,#vouPage .vou-personnel-table td{box-sizing:border-box;border-right:1px solid #e1e8f1;border-bottom:1px solid #e1e8f1;padding:9px 8px;min-width:46px;width:46px;text-align:center;line-height:1.5;overflow-wrap:anywhere;background:#fff}
+#vouPage .vou-personnel-table th{position:sticky;top:0;z-index:3;background:#eaf1fb;color:#244b78;font-weight:600}
+#vouPage .vou-personnel-table .vou-pin{position:sticky;z-index:1;text-align:left}
+#vouPage .vou-personnel-table th.vou-pin{z-index:4}
+#vouPage .vou-personnel-table .vou-col-0{left:0;width:66px;min-width:66px;text-align:center}
+#vouPage .vou-personnel-table .vou-col-1{left:66px;width:260px;min-width:260px}
+#vouPage .vou-personnel-table .vou-col-2{left:326px;width:220px;min-width:220px}
+#vouPage .vou-personnel-table .vou-col-3{left:546px;width:210px;min-width:210px;border-right:2px solid #c9d9ee}
+#vouPage .vou-personnel-table td:nth-last-child(-n+2),#vouPage .vou-personnel-table th:nth-last-child(-n+2){width:105px;min-width:105px}
+#vouPage .vou-personnel-table .vou-personnel-row-total{font-weight:600;background:#f3f7fc}
+#vouPage .vou-personnel-table tr:hover td{background:#f4f8ff}
+#vouPage .vou-personnel-table .vou-personnel-category td{background:#dceafa;color:#173f70;font-weight:700}
+#vouPage .vou-personnel-table .vou-personnel-subcategory td{background:#eef4fc;color:#315782;font-weight:600}
+#vouPage .vou-personnel-table .vou-personnel-grand td{background:#e0f2e9;color:#206047;font-weight:700}
+#vouPage .vou-visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media(max-width:1100px){#vouPage .vou-personnel-table td.vou-pin{position:static}#vouPage .vou-personnel-table th.vou-pin{left:auto}}

@@ -43,7 +43,9 @@ function luvrMonthHeaders(year,month,count) {
 }
 
 function luvrExportPayload(selection,rows) {
-    return {...selection,employee_ids:Array.from(rows,row=>Number(row.dataset.employee))};
+    const list=Array.from(rows),payload={...selection,employee_ids:list.map(row=>Number(row.dataset.employee))};
+    if(list.some(row=>row.dataset.personnelRowKey))payload.row_keys=list.map(row=>row.dataset.personnelRowKey||'employee:'+row.dataset.employee);
+    return payload;
 }
 
 function luvrMatchesDayFilters(employee,filters) {
@@ -172,7 +174,7 @@ function initLuvrMonth() {
         $('luvrDayFiltersInfo').textContent=Object.keys(dayFilters).length?`Показано ${count} из ${data.employees.length}. Итоги и Excel — по всему составу месяца.`:'';
         $('luvrDayFiltersReset').hidden=!Object.keys(dayFilters).length;
         sortLuvrEmployees(data.employees,sortField,sortDirection).forEach((employee,index)=>{
-            const tr=document.createElement('tr');tr.dataset.employee=employee.employee_id;tr.hidden=!luvrMatchesDayFilters(employee,dayFilters);
+            const tr=document.createElement('tr');tr.dataset.employee=employee.employee_id;if(employee.row_key)tr.dataset.personnelRowKey=employee.row_key;tr.hidden=!luvrMatchesDayFilters(employee,dayFilters);
             const cell=text=>{const td=document.createElement('td');td.textContent=text??'';tr.append(td);return td;};
             cell(index+1);
             const nameCell=cell('');nameCell.className='luvr-name';
@@ -181,7 +183,7 @@ function initLuvrMonth() {
             nameButton.onclick=async()=>{const epoch=controller.epoch;nameButton.disabled=true;
                 try{await openLuvrEmployee(employee.employee_id,luvrHistoryRequest,item=>epoch===controller.epoch?openEmployeeModal(item):undefined);}
                 catch(e){error.textContent=e.message;error.hidden=false;}finally{nameButton.disabled=controller.busy;}};
-            nameCell.append(nameButton);cell(employee.position_name);cell(employee.nrs_number);
+            nameCell.append(nameButton);if(employee.position_history_warning){const note=document.createElement('small');note.textContent=employee.position_history_warning;nameCell.append(note);}cell(employee.position_name);cell(employee.nrs_number);
             const specialty=cell(luvrSpecialtyMissing(employee)?'Не указана':employee.specialty);
             if(luvrSpecialtyMissing(employee)){specialty.className='luvr-specialty-error';specialty.title='Укажите специальность в связанной должности. Открыть сотрудника можно по ФИО.';}
             cell(({OBJECT:'Объект',OFFICE:'Офис'})[employee.work_location]||'');cell(({SHIFT:'Вахта',FIVE_TWO:'5/2'})[employee.work_schedule]||'');

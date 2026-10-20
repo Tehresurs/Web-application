@@ -1,0 +1,190 @@
+{
+  "schema": "test_construction_identity_stage46",
+  "select": [
+    "auth_permissions",
+    "auth_role_permissions",
+    "auth_roles",
+    "auth_security_events",
+    "auth_sessions",
+    "auth_user_roles",
+    "auth_users",
+    "construction_entities",
+    "construction_entity_hierarchy",
+    "construction_objects",
+    "construction_subobjects",
+    "crews",
+    "daily_control_fact_deletions",
+    "daily_control_fact_replacements",
+    "daily_control_results",
+    "employee_absences",
+    "employee_assignments",
+    "employee_duration_exceptions",
+    "employee_luvr_day_overrides",
+    "employee_movements",
+    "employee_sick_absence_labels",
+    "employee_sick_periods",
+    "employees",
+    "luvr_month_employees",
+    "luvr_months",
+    "luvr_settings",
+    "object_categories",
+    "object_po",
+    "po_types",
+    "positions",
+    "production_assignment_changes",
+    "production_assignment_items",
+    "production_control_mode_positions",
+    "production_matrix_dk",
+    "production_matrix_overrides",
+    "rail_tickets",
+    "report_absence_approvals",
+    "report_absence_rules",
+    "report_review_events",
+    "value_aliases",
+    "vou_settings",
+    "construction_entity_current"
+  ],
+  "write": {
+    "construction_objects": [
+      "INSERT",
+      "UPDATE"
+    ],
+    "construction_subobjects": [
+      "INSERT",
+      "UPDATE"
+    ],
+    "crews": [
+      "INSERT",
+      "UPDATE"
+    ],
+    "employees": [
+      "INSERT",
+      "UPDATE"
+    ],
+    "positions": [
+      "INSERT",
+      "UPDATE"
+    ],
+    "object_categories": [
+      "INSERT",
+      "UPDATE"
+    ],
+    "po_types": [
+      "INSERT",
+      "UPDATE"
+    ],
+    "employee_assignments": [
+      "INSERT",
+      "UPDATE"
+    ],
+    "employee_movements": [
+      "INSERT",
+      "UPDATE"
+    ],
+    "employee_sick_periods": [
+      "INSERT",
+      "UPDATE"
+    ],
+    "employee_sick_absence_labels": [
+      "INSERT",
+      "UPDATE"
+    ],
+    "employee_duration_exceptions": [
+      "INSERT",
+      "UPDATE"
+    ],
+    "employee_luvr_day_overrides": [
+      "INSERT",
+      "UPDATE"
+    ],
+    "employee_absences": [
+      "INSERT",
+      "UPDATE"
+    ],
+    "production_assignment_items": [
+      "INSERT",
+      "UPDATE"
+    ],
+    "production_matrix_overrides": [
+      "INSERT",
+      "UPDATE"
+    ],
+    "rail_tickets": [
+      "INSERT",
+      "UPDATE"
+    ],
+    "value_aliases": [
+      "INSERT",
+      "UPDATE"
+    ],
+    "construction_entities": [
+      "INSERT"
+    ],
+    "construction_entity_hierarchy": [
+      "INSERT"
+    ],
+    "daily_control_results": [
+      "INSERT"
+    ],
+    "production_assignment_changes": [
+      "INSERT"
+    ],
+    "report_review_events": [
+      "INSERT"
+    ],
+    "luvr_months": [
+      "INSERT"
+    ],
+    "luvr_month_employees": [
+      "INSERT"
+    ],
+    "auth_sessions": [
+      "INSERT",
+      "UPDATE"
+    ],
+    "auth_security_events": [
+      "INSERT"
+    ]
+  },
+  "functions": [
+    "normalize_known_value(text,text)",
+    "construction_reference(bigint,bigint,bigint)"
+  ],
+  "prohibited": [
+    "DELETE",
+    "TRUNCATE",
+    "REFERENCES",
+    "TRIGGER",
+    "CREATE",
+    "OWNERSHIP"
+  ],
+  "notes": "Candidate only. DK reconciliation DELETE remains an explicit incompatibility; foreign DB PUBLIC ACL must be resolved separately.",
+  "column_update": {
+    "auth_users": [
+      "password_changed_at"
+    ]
+  },
+  "sequences": [
+    "construction_entities_id_seq",
+    "construction_objects_id_seq",
+    "construction_subobjects_id_seq",
+    "crews_id_seq",
+    "daily_control_results_id_seq",
+    "employee_absences_id_seq",
+    "employee_duration_exceptions_id_seq",
+    "employee_luvr_day_overrides_id_seq",
+    "employee_movements_id_seq",
+    "employee_sick_periods_id_seq",
+    "employees_id_seq",
+    "luvr_month_employees_id_seq",
+    "object_categories_id_seq",
+    "po_types_id_seq",
+    "positions_id_seq",
+    "production_assignment_changes_id_seq",
+    "production_assignment_items_id_seq",
+    "production_matrix_overrides_id_seq",
+    "rail_tickets_id_seq",
+    "report_review_events_id_seq",
+    "value_aliases_id_seq"
+  ]
+}

@@ -99,3 +99,10 @@ test('one PDF can show two independent tickets while file count stays one',async
     assert.equal(c.items.length,2);assert.equal(railBatchStats(c.batchItems,c.fileCount)['Найдено файлов'],1);
     c.merge([{...items[0],processing_status:'CONFIRMED'}]);assert.equal(c.items[1].processing_status,'READY');
 });
+
+test('complete arrival assignment sends object PO and category in one request',async()=>{
+ const calls=[];const {c}=harness(async(url,options)=>{calls.push([url,options]);return {item:{id:5}};});
+ await c.action(5,'object',{entity_id:16,po_id:2,category_id:3});
+ assert.equal(calls.length,1);assert.equal(calls[0][1].method,'PATCH');
+ assert.deepEqual(JSON.parse(calls[0][1].body),{entity_id:16,po_id:2,category_id:3});
+});

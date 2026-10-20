@@ -2008,7 +2008,7 @@ let positionItems=[],positionEditId=null;
 document.getElementById("positionWorkLocation").addEventListener("change",()=>syncPositionSchedule());
 function showMainSection(section, nav) {
     closeDetails();
-    ["processingPage", "objectsPage", "employeesPage", "crewsPage", "contractorsPage", "logsPage", "journalPage", "railTicketsPage", "luvrCalendarPage", "luvrMonthPage", "productionMatrixPage", "deploymentPage"].forEach(id => {
+    ["processingPage", "objectsPage", "employeesPage", "crewsPage", "contractorsPage", "logsPage", "journalPage", "railTicketsPage", "luvrCalendarPage", "luvrMonthPage", "productionMatrixPage", "deploymentPage", "settingsPage", "vouPage"].forEach(id => {
         const page = document.getElementById(id);
         if (page) page.hidden = page !== section;
     });

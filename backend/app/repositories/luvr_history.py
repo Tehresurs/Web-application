@@ -19,7 +19,9 @@ _KINDS = {
 
 
 def _employee(cursor, employee_id):
-    cursor.execute("SELECT id FROM employees WHERE id=%s FOR KEY SHARE", (employee_id,))
+    from app.access_context import read_only_request
+    lock='' if read_only_request.get() else ' FOR KEY SHARE'
+    cursor.execute('SELECT id FROM employees WHERE id=%s'+lock, (employee_id,))
     if cursor.fetchone() is None:
         raise DirectoryNotFound("Сотрудник не найден")
 

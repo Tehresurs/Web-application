@@ -34,3 +34,21 @@ Thumbs.db
 
 # Uploaded reports and tickets
 /backend/uploads/
+
+# Private demo accounts / connector credentials
+/backend/private/
+/backend/cloudflare/*.json
+
+!backend/.env.demo.example
+
+/backend/cloudflare/demo-8001.yml
+/backend.venv/
+
+# Windows-user DPAPI database credential (local only)
+.private_pg_8001/
+
+# Local database archives and business Excel templates
+*.dump
+*.backup
+/backend/templates/vou/*.xlsm
+/backend/app/repositories/MAIN_PATCH.txt

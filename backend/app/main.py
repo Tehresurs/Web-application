@@ -65,6 +65,10 @@ from app.repositories.objects import (
 BASE_DIR = Path(__file__).resolve().parent
 
 app = FastAPI(title="Техресурс")
+from app.api.user_auth import router as user_auth_router
+app.include_router(user_auth_router)
+from app.api.personnel_transfers import router as personnel_transfers_router
+app.include_router(personnel_transfers_router)
 app.include_router(daily_control_router)
 app.include_router(known_values_router)
 app.include_router(luvr_history_router)
@@ -75,10 +79,16 @@ app.include_router(employee_absences_router)
 app.include_router(production_assignments_router)
 app.include_router(production_matrix_overrides_router)
 app.include_router(production_matrix_router)
+from app.api.matrix_dk import router as matrix_dk_router
+app.include_router(matrix_dk_router)
 app.include_router(deployment_router)
 app.include_router(crew_memberships_router)
 app.include_router(object_archive_router)
 app.include_router(construction_identity_router)
+from app.api.vou_settings import router as vou_settings_router
+app.include_router(vou_settings_router)
+from app.api.vou_archive import router as vou_archive_router
+app.include_router(vou_archive_router)
 from app.api.clean_construction import router as clean_construction_router
 app.include_router(clean_construction_router)
 

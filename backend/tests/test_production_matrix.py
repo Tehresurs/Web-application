@@ -432,3 +432,47 @@ class ProductionMatrixTests(unittest.TestCase):
         self.assertTrue(all(c['status']=='OK' for c in employee['checks']))
         for check in employee['checks']:
             self.assertEqual(check['object_cents']+check['cameral_cents'],check['available_cents'])
+
+
+    def test_po_overlay_is_dated_and_preserves_original_assignments_and_shares(self):
+        before=self.snapshot()
+        initial=self.employee()
+        c=next(r['cells']['2026-10-03'] for r in initial['rows'] if '2026-10-03' in r['cells'])
+        target=c['edit_target'];fields=target['fields']
+        payload={k:v for k,v in target.items() if k!='fields'}
+        payload.update(field_name='PO',po_id=2,version=fields['PO']['version'])
+        self.write(payload)
+        employee=self.employee()
+        prior=next(r['cells']['2026-10-02'] for r in employee['rows'] if '2026-10-02' in r['cells'])
+        current=next(r['cells']['2026-10-03'] for r in employee['rows'] if '2026-10-03' in r['cells'])
+        self.assertEqual(prior['po_id'],1);self.assertEqual(current['po_id'],2)
+        self.assertEqual(current['po_name'],'ПО Б')
+        self.assertEqual(initial['totals'],employee['totals'])
+        self.assertEqual(before,self.snapshot())
+        self.assertEqual(self.conn.execute('SELECT po_id FROM production_assignment_items WHERE id=%s',(self.saved['items'][0]['id'],)).fetchone()[0],1)
+
+    def test_fact_po_overlay_does_not_rewrite_daily_fact_or_other_dates(self):
+        fid=self.fact('2026-10-04')
+        self.fact('2026-10-05')
+        before=self.snapshot()
+        e=self.employee();c=next(r['cells']['2026-10-04'] for r in e['rows'] if '2026-10-04' in r['cells'])
+        payload={k:v for k,v in c['edit_target'].items() if k!='fields'}
+        payload.update(field_name='PO',po_id=2,version=0)
+        self.write(payload)
+        changed=self.employee()
+        day4=next(r['cells']['2026-10-04'] for r in changed['rows'] if '2026-10-04' in r['cells'])
+        day5=next(r['cells']['2026-10-05'] for r in changed['rows'] if '2026-10-05' in r['cells'])
+        self.assertEqual(day4['po_id'],2);self.assertEqual(day5['po_id'],1)
+        self.assertEqual(self.conn.execute('SELECT po_id FROM daily_control_results WHERE id=%s',(fid,)).fetchone()[0],1)
+        self.assertEqual(before,self.snapshot())
+        self.assertEqual(e['totals'],changed['totals'])
+
+    def test_invalid_po_and_stale_version_do_not_change_matrix(self):
+        c=next(r['cells']['2026-10-03'] for r in self.employee()['rows'] if '2026-10-03' in r['cells'])
+        payload={k:v for k,v in c['edit_target'].items() if k!='fields'}
+        payload.update(field_name='PO',po_id=999999,version=0)
+        before=self.matrix()
+        self.assertEqual(http_request('PATCH','/api/employees/2/production-matrix-overrides',payload)[0],400)
+        self.assertEqual(before,self.matrix())
+        payload['po_id']=2;self.write(payload)
+        self.assertEqual(http_request('PATCH','/api/employees/2/production-matrix-overrides',payload)[0],409)

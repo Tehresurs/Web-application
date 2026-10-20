@@ -326,7 +326,7 @@ def get_employees(archived=False):
             )
             rows = cursor.fetchall()
 
-    return [
+        items = [
         {
             "id": row[0],
             "full_name": row[1],
@@ -344,7 +344,9 @@ def get_employees(archived=False):
             "archived_at": row[17], "email": row[18],
         }
         for row in rows
-    ]
+        ]
+        from app.repositories.personnel_transfers import current_positions
+        return current_positions(conn,items)
 
 
 def create_employee(
@@ -414,6 +416,17 @@ def update_employee(
         raise ValueError("ФИО сотрудника не заполнено")
 
     with get_connection() as conn:
+        from app.repositories.personnel_transfers import installed
+        if installed(conn):
+            conn.execute('SELECT pg_advisory_xact_lock(20261017,29)')
+            stored=conn.execute('SELECT position_id FROM employees WHERE id=%s FOR UPDATE',(employee_id,)).fetchone()
+            if stored is None:raise DirectoryNotFound('Сотрудник не найден')
+            from app.services.luvr_duration import local_today
+            effective=conn.execute('SELECT personnel_position_at(%s,%s)',(employee_id,local_today())).fetchone()[0]
+            current=effective.get('position_id') if effective.get('status')=='KNOWN' else stored[0]
+            if position_id!=current:raise DirectoryConflict('Для изменения основной должности оформите перевод')
+            # position_id is a retained legacy observation, never a current cache.
+            position_id=stored[0]
         with conn.cursor() as cursor:
 
             cursor.execute(

@@ -8,12 +8,15 @@ from app.repositories.luvr_calendar import CALENDAR_SELECT, decode_calendar_inpu
 def get_month_inputs(year, month):
     # Header and facts belong to the same statement snapshot, even during edits.
     with get_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
         cur.execute('''SELECT EXISTS(SELECT 1 FROM luvr_months WHERE year=%s AND month=%s) AS formed,
             COALESCE((SELECT jsonb_agg(to_jsonb(facts)) FROM ('''+CALENDAR_SELECT+'''
             JOIN luvr_month_employees member ON member.employee_id=e.id
             WHERE member.year=%s AND member.month=%s) facts),'[]'::jsonb) AS employees''',
             (year,month,year,month))
         result=cur.fetchone()
+        from app.repositories.personnel_transfers import attach_context
+        attach_context(conn,result['employees'])
     for employee in result['employees']:
         if employee['dismissal_date']: employee['dismissal_date']=date.fromisoformat(employee['dismissal_date'])
         decode_calendar_inputs(employee)

@@ -8,9 +8,11 @@
 <link rel="stylesheet" href="/static/css/ui_components.css?v=20261004-absence">
 <link rel="stylesheet" href="/static/css/employee_visuals.css?v=20261004-visual">
 <link rel="stylesheet" href="/static/css/employee_card.css?v=20261012-employee-sections">
-<link rel="stylesheet" href="/static/css/production_matrix.css?v=20261012-employee-sections">
-<link rel="stylesheet" href="/static/css/luvr_workspace.css?v=20261015-name-buttons">
+<link rel="stylesheet" href="/static/css/employee_transfers.css?v=20261020-1">
+<link rel="stylesheet" href="/static/css/production_matrix.css?dk=20261017&v=20261012-employee-sections">
+<link rel="stylesheet" href="/static/css/luvr_workspace.css?v=20261018-readable-picker">
 <link rel="stylesheet" href="/static/css/deployment.css?v=1">
+<link rel="stylesheet" href="/static/css/vou.css?v=20261018-personnel">
 <link rel="stylesheet" href="/static/css/deployment_analysis.css?v=1">
 <link rel="stylesheet" href="/static/css/directory_workspace.css?v=20261015-long-names">
 </head>
@@ -29,14 +31,15 @@
             <button class="nav-item" id="journalNavButton"><span>▤</span>Журнал контроля</button>
             <button class="nav-item" id="luvrNavButton"><span>▦</span>ЛУВР</button>
             <button class="nav-item" id="deploymentNavButton"><span>▤</span>Расстановка</button>
-            <button class="nav-item" id="logsNavButton"><span>≡</span>Логи</button><button class="nav-item"><span>⚙</span>Настройки</button>
+            <button class="nav-item" id="vouNavButton"><span>▤</span>Отчет ВОУ</button>
+            <button class="nav-item" id="logsNavButton"><span>≡</span>Логи</button><button class="nav-item" id="settingsNavButton"><span>⚙</span>Настройки</button>
         </nav>
         <div class="sidebar-footer"><strong>Техресурс</strong><br><small>Система контроля отчётов</small><div class="version">v 1.0.0</div></div>
     </aside>
 
     <main class="main">
         <header class="page-header">
-            <div><div class="employee-default-page-title"><h1>Обработка отчетов</h1><p>Загрузка и проверка ежедневных Word-отчетов</p></div><div class="employee-only-page-title"><h1>Сотрудники</h1></div></div>
+            <div><div class="vou-page-title"><h1>Отчет ВОУ</h1><p>Время оказания услуг · Формирование и архив</p></div><div class="employee-default-page-title"><h1>Обработка отчетов</h1><p>Загрузка и проверка ежедневных Word-отчетов</p></div><div class="employee-only-page-title"><h1>Сотрудники</h1></div></div>
             <div class="header-meta"><div class="system-status"><span></span>Система готова</div><div class="header-date" id="headerDate">—</div><div class="header-user">◉ Администратор⌄</div></div>
         </header>
 
@@ -48,6 +51,57 @@
                 <button type="button" id="luvrCalendarNavButton" class="secondary-button">Календарь ЛУВР</button>
                 <button type="button" id="productionMatrixNavButton" class="secondary-button">Производственная матрица</button>
             </nav>
+        </section>
+        <section id="vouPage" class="vou-workspace" hidden aria-label="Отчет ВОУ">
+            <nav class="ui-tabs vou-tabs" role="tablist" aria-label="Вкладки Отчета ВОУ">
+                <button type="button" id="vouCreateTab" class="ui-tab" role="tab" aria-selected="true" aria-controls="vouCreatePanel" tabindex="0">Формирование</button>
+                <button type="button" id="vouPersonnelTab" class="ui-tab" role="tab" aria-selected="false" aria-controls="vouPersonnelPanel" tabindex="-1">Персонал</button>
+                <button type="button" id="vouArchiveTab" class="ui-tab" role="tab" aria-selected="false" aria-controls="vouArchivePanel" tabindex="-1">Архив отчётов</button>
+            </nav>
+            <article id="vouCreatePanel" class="ui-card vou-create-card" role="tabpanel" aria-labelledby="vouCreateTab">
+                <header class="vou-section-heading">
+                    <div><span class="vou-eyebrow">ОТЧЁТНОСТЬ</span><h2>Отчет о времени оказания услуг</h2><p>Выберите отчётный период и сформируйте Excel-файл.</p></div>
+                    <span class="ui-badge vou-format">Excel · XLSM</span>
+                </header>
+                <form id="vouGenerateForm" class="vou-generate-form">
+                    <label for="vouMonth">Отчётный период<input class="ui-input" type="month" id="vouMonth" min="1900-01" max="9999-12" required></label>
+                    <button type="submit" class="ui-button ui-button-primary" id="vouGenerate">Сформировать Отчет ВОУ</button>
+                    <button type="button" class="ui-button" id="vouOpenSettings">Реквизиты Отчета ВОУ</button>
+                </form>
+                <p class="vou-scope-note">Формируется лист «Персонал». Остальные листы сохраняются из шаблона.</p>
+                <p id="vouGenerateStatus" class="vou-status" role="status" aria-live="polite"></p>
+                <ul id="vouWarnings" class="vou-warning-list" aria-live="polite"></ul>
+            </article>
+            <article id="vouPersonnelPanel" class="ui-card vou-personnel-card" role="tabpanel" aria-labelledby="vouPersonnelTab" hidden>
+                <header class="vou-section-heading"><div><span class="vou-eyebrow">РЕЗУЛЬТАТ ФОРМИРОВАНИЯ</span><h2>Персонал</h2><p id="vouPersonnelPeriod">Сохранённый результат отчёта о времени оказания услуг</p></div><a id="vouPersonnelDownload" class="ui-button vou-download" hidden>Скачать XLSM</a></header>
+                <p id="vouPersonnelStatus" class="vou-status" role="status" aria-live="polite"></p>
+                <div id="vouPersonnelSummary" class="vou-personnel-summary" hidden><span>Итого человеко-дней <strong id="vouPersonnelTotal"></strong></span><span class="ui-muted">Значения из сформированного листа «Персонал»</span></div>
+                <div id="vouPersonnelScroll" class="vou-personnel-scroll" role="region" aria-label="Таблица Персонал" tabindex="0" hidden><table id="vouPersonnelTable" class="vou-personnel-table"><caption class="vou-visually-hidden">Персонал — результат сформированного отчёта</caption><thead id="vouPersonnelHead"></thead><tbody id="vouPersonnelRows"></tbody></table></div>
+            </article>
+            <article id="vouArchivePanel" class="ui-card vou-archive-card" role="tabpanel" aria-labelledby="vouArchiveTab" hidden>
+                <header class="vou-section-heading">
+                    <div><h2>Архив отчётов <span id="vouArchiveCount" class="ui-badge">0</span></h2><p>Каждый файл сохраняется с реквизитами на момент формирования.</p></div>
+                    <button type="button" class="ui-button" id="vouArchiveRefresh">Обновить архив</button>
+                </header>
+                <p id="vouArchiveStatus" class="vou-status" role="status" aria-live="polite"></p>
+                <div id="vouArchiveEmpty" class="vou-empty" hidden><span class="vou-empty-symbol" aria-hidden="true">▤</span><h3>Отчётов пока нет</h3><p>После успешного формирования здесь появится файл для скачивания.</p></div>
+                <div id="vouArchiveTable" class="ui-table-wrap" hidden><table class="ui-table vou-table"><thead><tr><th scope="col">Период</th><th scope="col">Дата формирования</th><th scope="col">Договор</th><th scope="col">Человеко-дни</th><th scope="col">Файл</th></tr></thead><tbody id="vouArchiveRows"></tbody></table></div>
+            </article>
+        </section>
+        <section id="settingsPage" hidden>
+            <article class="ui-card vou-settings-card">
+                <div class="vou-section-heading"><div><span class="vou-eyebrow">НАСТРОЙКИ ОТЧЁТА</span><h2>Реквизиты Отчета ВОУ</h2></div></div>
+                <p>Можно заполнить позже. Для формирования отчёта необходимы все поля.</p>
+                <form id="vouSettingsForm" class="vou-settings-form">
+                    <label>Номер договора <input class="ui-input" name="contract_number" maxlength="500"></label>
+                    <label>Дата договора <input class="ui-input" name="contract_date" type="date"></label>
+                    <label>Редакция договора (rev.) <input class="ui-input" name="contract_revision" maxlength="500"></label>
+                    <label>Ф.И.О. подписанта заказчика <input class="ui-input" name="customer_signer_name" maxlength="500"></label>
+                    <label>Ф.И.О. подписанта исполнителя <input class="ui-input" name="contractor_signer_name" maxlength="500"></label>
+                    <button type="submit" class="ui-button ui-button-primary">Сохранить реквизиты</button>
+                </form>
+                <p id="vouSettingsStatus" class="vou-status" role="status" aria-live="polite"></p>
+            </article>
         </section>
         <section id="deploymentPage" hidden>
             <header class="ui-card deployment-toolbar"><h2>Расстановка</h2>
@@ -79,6 +133,7 @@
                     <button type="button" id="pmNext" aria-label="Следующий месяц">›</button>
                 </div>
                 <button type="button" class="ui-button action-blue" id="pmRefresh">Обновить</button>
+                <button type="button" class="ui-button action-blue" id="pmExpandAll" aria-expanded="false" disabled>Развернуть все строки</button>
                 <button type="button" class="ui-button action-blue" id="pmOpenLuvr">Открыть ЛУВР</button>
                 <button type="button" class="ui-button action-green" id="pmOpenReports">Обработать отчёты</button>
             </header>
@@ -632,20 +687,21 @@
 <script src="/static/js/construction_choices.js?v=20261014-identity"></script>
 <script src="/static/js/object_hierarchy.js?v=20261015-long-names"></script>
 <script src="/static/js/construction_identity_preview.js?v=20261014-stage492"></script>
-<script src="/static/js/report_save.js?v=20261017-add-file"></script>
+<script src="/static/js/report_save.js?v=20261017-dk"></script>
 <script src="/static/js/report_review.js?v=20261016-po-category"></script>
 <script src="/static/js/employee_absences.js?v=20261004-absence"></script>
 <script src="/static/js/ui_icons.js?v=20261004-visual"></script>
 <script src="/static/js/employee_visuals.js?v=20261004-visual"></script>
 <script src="/static/js/employee_card.js?v=20261012-employee-sections"></script>
-<script src="/static/js/employee_workspace.js?v=20261004-visual"></script>
+<script src="/static/js/employee_transfers.js?v=20261020-7"></script>
+<script src="/static/js/employee_workspace.js?v=20261020-transfers"></script>
 <script src="/static/js/crew_memberships.js?v=20261013"></script>
 <script src="/static/js/object_archive.js?v=20261013"></script>
 <script src="/static/js/directory_workspace.js?v=20261014-stage471"></script>
-<script src="/static/js/processing.js?v=20261017-add-file"></script>
+<script src="/static/js/processing.js?v=20261018-vou-archive"></script>
 <script src="/static/js/journal.js?v=20261014-identity"></script>
 <script src="/static/js/rail_employee.js?v=20261008-1"></script>
-<script src="/static/js/rail_tickets.js?v=20261014-identity"></script>
+<script src="/static/js/rail_tickets.js?v=20261018-readable-picker"></script>
 <script src="/static/js/luvr_calendar.js?v=20261015-luvr-colors"></script>
 <script src="/static/js/luvr_duration.js?v=20261002-duration"></script>
 <script src="/static/js/luvr_sort.js?v=20261003-luvrui"></script>
@@ -653,10 +709,13 @@
 <script src="/static/js/luvr_month.js?v=20261015-luvr-colors"></script>
 <script src="/static/js/luvr_header.js?v=20261003-final"></script>
 <script src="/static/js/luvr_scroll.js?v=20261003-luvrui"></script>
-<script src="/static/js/matrix_report.js?v=20261017-add-file"></script>
-<script src="/static/js/production_matrix.js?v=20261017-add-file"></script>
+<script src="/static/js/matrix_report.js?v=20261017-dk"></script>
+<script src="/static/js/production_matrix.js?v=20261018-expand-all"></script>
 <script src="/static/js/deployment.js?v=20261016-analysis-export"></script>
 <script src="/static/js/deployment_analysis.js?v=1"></script>
 {% endif %}
+<script src="/static/js/vou_settings.js?v=20261018-settings"></script>
+<script src="/static/js/vou_personnel.js?v=20261018-personnel"></script>
+<script src="/static/js/vou_archive.js?v=20261018-personnel"></script>
 </body>
 </html>
