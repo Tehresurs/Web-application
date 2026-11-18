@@ -3,9 +3,10 @@ from io import BytesIO
 import re
 from zipfile import ZipFile
 from openpyxl import load_workbook
+from openpyxl.utils.cell import coordinate_from_string
 from app.repositories.luvr_month import get_header_snapshot
 from app.services.luvr_month import month_calendar
-from app.services.luvr_export_table import render_table
+from app.services.luvr_export_table import render_table,table_total_row
 from app.services.luvr_export_layout import compact_month
 
 FOOTER_MAPPING={'E90':'developer_position_snapshot','K90':'developer_name_snapshot',
@@ -32,7 +33,12 @@ def footer_values(snapshot):
 
 def fill_footer(table,values):
     workbook=load_workbook(BytesIO(table));sheet=workbook.active
-    if not str(sheet['A90'].value).strip()=='Разработал' or not str(sheet['A93'].value).strip()=='Согласовано':
+    offset=table_total_row(sheet)-85
+    def shifted(address):
+        column,row=coordinate_from_string(address);return column+str(row+offset)
+    values={shifted(cell):value for cell,value in values.items()}
+    agreed_cell=shifted('K93');agreed_row=93+offset
+    if not str(sheet[shifted('A90')].value).strip()=='Разработал' or not str(sheet[shifted('A93')].value).strip()=='Согласовано':
         raise ValueError('В MASTER не найдены утверждённые блоки подписей.')
     if any(cell in merged for merged in sheet.merged_cells.ranges for cell in values):
         raise ValueError('Объединения блоков подписей или легенды в MASTER изменились.')
@@ -53,13 +59,13 @@ def fill_footer(table,values):
         xml=re.sub(pattern,replace,original.read(filename).decode(),flags=re.S)
         # K93 is an existing blank position aligned with K90, not a stored XML cell.
         missing=set(values)-seen
-        if missing-{'K93'}:raise ValueError('Область подписей или легенды MASTER изменилась.')
-        if 'K93' in missing:
-            row=re.search(r'(<row\b[^>]*\br="93"[^>]*>)(.*?)(</row>)',xml,re.S)
+        if missing-{agreed_cell}:raise ValueError('Область подписей или легенды MASTER изменилась.')
+        if agreed_cell in missing:
+            row=re.search(rf'(<row\b[^>]*\br="{agreed_row}"[^>]*>)(.*?)(</row>)',xml,re.S)
             if not row:raise ValueError('В MASTER отсутствует строка согласующего.')
             cells=row.group(2);matches=list(re.finditer(pattern,cells,re.S))
             insert_at=next((m.start() for m in matches if sheet[m.group(1)].column>11),len(cells))
-            content=cells[:insert_at]+new['K93']+cells[insert_at:]
+            content=cells[:insert_at]+new[agreed_cell]+cells[insert_at:]
             xml=xml[:row.start(2)]+content+xml[row.end(2):]
         for entry in original.infolist():
             output.writestr(entry,xml.encode() if entry.filename==filename else original.read(entry.filename))

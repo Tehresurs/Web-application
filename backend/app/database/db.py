@@ -60,12 +60,14 @@ def get_connection():
     viewer=read_only_request.get()
     if viewer:
         connection_options['options']=connection_options.get('options','')+' -c default_transaction_read_only=on'
+    from app.database.pg_credentials import connection_credentials
+    connection_user,connection_password=connection_credentials()
     conn=MatrixConnection.connect(
         host=os.getenv("DB_HOST"),
         port=os.getenv("DB_PORT"),
         dbname=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
+        user=connection_user,
+        password=connection_password,
         **connection_options,
     )
     if viewer:

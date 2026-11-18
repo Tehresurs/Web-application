@@ -18,15 +18,19 @@ class CompactTests(unittest.TestCase):
         source=load_workbook(BytesIO(original)).active
         result=compact_month(original,n)
         sheet=load_workbook(BytesIO(result)).active
+        cached=load_workbook(BytesIO(result),data_only=True).active
         offset=76-n;total=9+n
         self.assertEqual(sheet.cell(total-1,1).value,n)
-        self.assertEqual(sheet.cell(total,37).value,n*3)
+        self.assertEqual(sheet.cell(total,37).value,f'=SUM(AK9:AK{total-1})')
+        self.assertEqual(cached.cell(total,37).value,n*3)
         for row in source:
             for cell in row:
                 if total<=cell.row<85:continue
                 target=sheet.cell(cell.row-offset if cell.row>=85 else cell.row,cell.column)
                 self.assertEqual(cell._style,target._style)
-                if cell.data_type!='f':self.assertEqual(cell.value,target.value)
+                if cell.row==85 and 6<=cell.column<=39:
+                    self.assertEqual(cell.value,cached.cell(total,cell.column).value)
+                elif cell.data_type!='f':self.assertEqual(cell.value,target.value)
         for old_row in range(85,102):
             self.assertEqual(source.row_dimensions[old_row].height,sheet.row_dimensions[old_row-offset].height)
         self.assertEqual(sheet['A'+str(total+5)].value.strip(),'Разработал')

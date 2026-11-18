@@ -6,7 +6,7 @@ from datetime import date
 MAIN_POSITION_ORDER = (2, 3, 4, 5, 7, 9)
 OTHER_POSITION_ORDER = (16, 7, 11, 12, 13, 15, 10)
 # Explicitly approved report-only additions, scoped to their subsections.
-ADDITIONAL_POSITION_ORDER = {"6.2": (3,), "6.4": (6, 8, 14, 20)}
+ADDITIONAL_POSITION_ORDER = {"6.2": (3,), "6.4": (6, 8, 14, 20, 21)}
 
 
 def position_order(section_code):
@@ -22,13 +22,88 @@ SUBSECTIONS = (("6.1", 7, "Инженерные изыскания"),
 
 
 class VouDataError(ValueError):
-    def __init__(self, code, **details):
+    def __init__(self, code, *, issues=None, **details):
         self.code, self.details = code, details
+        self.issues = issues or [dict(code=code, details=details)]
         super().__init__(f"{code}: {details}")
 
 
 def _fail(code, **details):
     raise VouDataError(code, **details)
+
+
+def _issue(code, **details):
+    return dict(code=code, details=details)
+
+
+def _raise_issues(issues):
+    if issues:
+        first = issues[0]
+        raise VouDataError(first["code"], issues=issues, **first["details"])
+
+
+def describe_vou_issue(issue):
+    code, details = issue["code"], issue.get("details", {})
+    employee = details.get("full_name") or (
+        f"Сотрудник ID {details['employee_id']}" if details.get("employee_id") is not None
+        else None
+    )
+    day = details.get("date")
+    if isinstance(day, str) and len(day) == 10:
+        day = f"{day[8:10]}.{day[5:7]}.{day[:4]}"
+    prefix = f"{employee}, {day}: " if employee and day else ""
+    if code == "POSITION_ORDER_NOT_AGREED":
+        position = details.get("position_name") or f"ID {details.get('position_id')}"
+        category = (f"«{details['category_name']}» (ID {details.get('category_id')})"
+                    if details.get("category_name") else f"ID {details.get('category_id')}")
+        return (f"{prefix}должность «{position}» не согласована для раздела "
+                f"{details.get('subsection')} ВОУ (категория {category}).")
+    if code == "UNMAPPED_MATRIX_KIND":
+        return f"{prefix}тип строки матрицы «{details.get('kind')}» не поддерживается для ВОУ."
+    if code == "POSITION_DEFINITION_VERSION_MISSING":
+        return (f"{prefix}не найдена версия должности ID {details.get('position_id')} "
+                f"(версия ID {details.get('version_id')}).")
+    if code == "MISSING_OBJECT_IDENTITY":
+        return f"{prefix}у строки не указан объект или идентификатор объекта."
+    if code == "UNCONFIRMED_OR_STALE_FACT":
+        if not details.get("fact_exists"):
+            reason = "не найден среди подтверждённых отчётов"
+        elif details.get("report_received") is not True:
+            reason = "не отмечен как подтверждённый"
+        else:
+            reason = (f"относится к сотруднику ID {details.get('fact_employee_id')} "
+                      f"и дате {details.get('fact_date')}, а не к сотруднику ID "
+                      f"{details.get('employee_id')} и дате {day}")
+        return f"{prefix}факт ID {details.get('fact_id')} {reason}."
+    if code == "FACT_CATEGORY_MISMATCH":
+        return (f"{prefix}категория факта ID {details.get('fact_id')} "
+                f"({details.get('fact_category_id')}) не совпадает с категорией матрицы "
+                f"({details.get('matrix_category_id')}); подтверждённая корректировка отсутствует.")
+    if code == "DUPLICATE_MATRIX_FACT":
+        return f"{prefix}факт ID {details.get('fact_id')} включён в матрицу более одного раза."
+    if code == "DUPLICATE_MATRIX_PLAN":
+        return f"{prefix}одинаковое плановое назначение включено в матрицу более одного раза."
+    if code == "UNKNOWN_MATRIX_SOURCE":
+        return f"{prefix}у ячейки матрицы неизвестный источник «{details.get('source')}»."
+    if code == "INVALID_MATRIX_SHARE":
+        return f"{prefix}у ячейки матрицы указана некорректная доля ({details.get('share_value')})."
+    if code == "MATRIX_CELL_IDENTITY_MISMATCH":
+        return (f"{prefix}ячейка содержит сотрудника ID {details.get('cell_employee_id')} "
+                f"и дату {details.get('cell_date')}; в строке указаны сотрудник ID "
+                f"{details.get('employee_id')} и дата {day}.")
+    if code == "MATRIX_MONTH_NOT_FORMED":
+        return f"Производственная матрица за {details.get('month'):02d}.{details.get('year')} не сформирована."
+    if code == "CATEGORY_LAYOUT_CHANGED":
+        return f"Изменена структура справочника категорий: отсутствует или перемещена категория ID {details.get('category_id')}."
+    if code == "SUBCATEGORY_LAYOUT_CHANGED":
+        return f"Изменена структура подразделов категории «Прочие»: категория ID {details.get('category_id')}."
+    if code == "AMBIGUOUS_SUBCATEGORY_6_4":
+        return f"В справочнике неоднозначно определён подраздел 6.4 (ID: {details.get('ids')})."
+    if code == "CONTROL_TOTAL_MISMATCH":
+        return "Контрольные итоги ВОУ не совпали с суммой проверенных ячеек матрицы."
+    if code == "VOU_WRONG_DATABASE_PROFILE":
+        return "Формирование ВОУ запущено с неверным профилем данных; обратитесь к администратору."
+    return f"{prefix}ошибка проверки данных ВОУ ({code})."
 
 
 def _fio(value):
@@ -48,7 +123,7 @@ def distribution_key(display_row, cell):
     return (cell.get("kind"), obj, cell.get("po_id"), cell.get("subcontractor_id"))
 
 
-def select_matrix_cells(matrix, confirmed_facts):
+def _select_matrix_cells(matrix, confirmed_facts):
     """Select existing values only. Zero FACT and DK also supersede PLAN.
 
     Never fall back from a corrupt FACT-labelled cell: inconsistent provenance
@@ -57,7 +132,7 @@ def select_matrix_cells(matrix, confirmed_facts):
     year, month = matrix["year"], matrix["month"]
     valid_days = {date(year, month, d).isoformat() for d in range(1, monthrange(year, month)[1]+1)}
     confirmed = {f["id"]: f for f in confirmed_facts}
-    records, factual_keys, seen = [], set(), set()
+    records, factual_keys, seen, issues = [], set(), set(), []
     counts, sums = Counter(), Counter()
     for employee in matrix["employees"]:
         eid = employee["employee_id"]
@@ -65,11 +140,19 @@ def select_matrix_cells(matrix, confirmed_facts):
             for day, cell in row["cells"].items():
                 source, cents = cell.get("source"), cell.get("share_cents")
                 if source not in ("FACT", "PLAN"):
-                    _fail("UNKNOWN_MATRIX_SOURCE", source=source)
+                    issues.append(_issue("UNKNOWN_MATRIX_SOURCE", source=source, employee_id=eid,
+                                         full_name=employee.get("full_name"), date=day))
+                    continue
                 if type(cents) is not int or cents < 0:
-                    _fail("INVALID_MATRIX_SHARE", employee_id=eid, date=day)
+                    issues.append(_issue("INVALID_MATRIX_SHARE", employee_id=eid,
+                                         full_name=employee.get("full_name"), date=day,
+                                         share_value=repr(cents)))
+                    continue
                 if day not in valid_days or cell.get("date") != day or cell.get("employee_id") != eid:
-                    _fail("MATRIX_CELL_IDENTITY_MISMATCH", employee_id=eid, date=day)
+                    issues.append(_issue("MATRIX_CELL_IDENTITY_MISMATCH", employee_id=eid,
+                                         full_name=employee.get("full_name"), date=day,
+                                         cell_date=cell.get("date"), cell_employee_id=cell.get("employee_id")))
+                    continue
                 key = (eid, day, distribution_key(row, cell))
                 counts[source] += 1
                 sums[source] += cents
@@ -78,12 +161,24 @@ def select_matrix_cells(matrix, confirmed_facts):
                     fact = confirmed.get(fid)
                     if (not fact or fact.get("employee_id") != eid or str(fact.get("report_date")) != day
                             or cell.get("report_received") is not True):
-                        _fail("UNCONFIRMED_OR_STALE_FACT", fact_id=fid, employee_id=eid, date=day)
+                        issues.append(_issue("UNCONFIRMED_OR_STALE_FACT", fact_id=fid, employee_id=eid,
+                                             full_name=employee.get("full_name"), date=day,
+                                             fact_exists=fact is not None,
+                                             fact_employee_id=fact.get("employee_id") if fact else None,
+                                             fact_date=str(fact.get("report_date")) if fact else None,
+                                             report_received=cell.get("report_received")))
+                        continue
                     if (eid, day, fid) in seen:
-                        _fail("DUPLICATE_MATRIX_FACT", fact_id=fid, employee_id=eid, date=day)
+                        issues.append(_issue("DUPLICATE_MATRIX_FACT", fact_id=fid, employee_id=eid,
+                                             full_name=employee.get("full_name"), date=day))
+                        continue
                     seen.add((eid, day, fid))
                     if cell.get("category_id") != fact.get("category_id") and not (cell.get("applied_overrides") or {}).get("CATEGORY"):
-                        _fail("FACT_CATEGORY_MISMATCH", fact_id=fid, date=day)
+                        issues.append(_issue("FACT_CATEGORY_MISMATCH", fact_id=fid, employee_id=eid,
+                                             full_name=employee.get("full_name"), date=day,
+                                             matrix_category_id=cell.get("category_id"),
+                                             fact_category_id=fact.get("category_id")))
+                        continue
                     factual_keys.add(key)
                 records.append((key, employee, row, day, cell))
     selected, plans_seen = [], set()
@@ -95,11 +190,19 @@ def select_matrix_cells(matrix, confirmed_facts):
             continue
         if source == "PLAN":
             if key in plans_seen:
-                _fail("DUPLICATE_MATRIX_PLAN", employee_id=employee["employee_id"], date=day)
+                issues.append(_issue("DUPLICATE_MATRIX_PLAN", employee_id=employee["employee_id"],
+                                     full_name=employee.get("full_name"), date=day))
+                continue
             plans_seen.add(key)
         selected.append((employee, row, day, cell))
         counts["selected_"+source] += 1
         sums["selected_"+source] += cell["share_cents"]
+    return selected, counts, sums, issues
+
+
+def select_matrix_cells(matrix, confirmed_facts):
+    selected, counts, sums, issues = _select_matrix_cells(matrix, confirmed_facts)
+    _raise_issues(issues)
     return selected, counts, sums
 
 
@@ -142,7 +245,7 @@ def prepare_data(matrix, positions, categories, confirmed_facts):
     targets = {s["category_id"]: s for s in sections[:5]}
     targets.update({s["category_id"]: s for s in subsections if s["category_id"] is not None})
     targets["CAMERAL_6_4"] = subsections[3]
-    selected, counts, sums = select_matrix_cells(matrix, confirmed_facts)
+    selected, counts, sums, issues = _select_matrix_cells(matrix, confirmed_facts)
     confirmed = {f["id"]: f for f in confirmed_facts}
     grouped, missing_descriptions = {}, set()
     source_warnings = Counter()
@@ -164,7 +267,9 @@ def prepare_data(matrix, positions, categories, confirmed_facts):
         cameral = cell.get("kind") == "CAMERAL" and not cell.get("entity_id") and not cell.get("object_id")
         grouping_category = "CAMERAL_6_4" if cameral else category
         if not cameral and cell.get("kind") != "OBJECT":
-            _fail("UNMAPPED_MATRIX_KIND", kind=cell.get("kind"), employee_id=eid, date=day, source=source)
+            issues.append(_issue("UNMAPPED_MATRIX_KIND", kind=cell.get("kind"), employee_id=eid,
+                                 full_name=employee["full_name"], date=day, source=source))
+            continue
         if not cameral and category not in targets:
             warnings.append(dict(code="OBJECT_CATEGORY_MISSING_OR_UNMAPPED", employee_id=eid,
                 full_name=employee["full_name"], date=day, object_name=cell.get("object_name"),
@@ -177,12 +282,19 @@ def prepare_data(matrix, positions, categories, confirmed_facts):
         target = targets[grouping_category]
         order = position_order(target["code"])
         if pid not in positions or pid not in order:
-            _fail("POSITION_ORDER_NOT_AGREED", position_id=pid, category_id=category, fact_id=fact_id,
-                  subsection=target["code"], employee_id=eid, full_name=employee["full_name"],
-                  position_name=positions.get(pid, {}).get("name"), date=day)
+            issues.append(_issue("POSITION_ORDER_NOT_AGREED", position_id=pid, category_id=category,
+                                 fact_id=fact_id, subsection=target["code"], employee_id=eid,
+                                 category_name=catalog.get(category, {}).get("name"),
+                                 full_name=employee["full_name"],
+                                 position_name=positions.get(pid, {}).get("name"), date=day))
+            continue
         version_id=cell.get('position_definition_version_id')
         definition=positions[pid] if version_id is None else positions[pid].get('_definitions',{}).get(version_id)
-        if definition is None:_fail('POSITION_DEFINITION_VERSION_MISSING',position_id=pid,version_id=version_id,date=day)
+        if definition is None:
+            issues.append(_issue('POSITION_DEFINITION_VERSION_MISSING', position_id=pid,
+                                 version_id=version_id, employee_id=eid,
+                                 full_name=employee["full_name"], date=day))
+            continue
         description = definition.get('aos_description')
         if not description or not description.strip():
             description = None
@@ -190,7 +302,9 @@ def prepare_data(matrix, positions, categories, confirmed_facts):
         oid, sid = cell.get("object_id"), cell.get("subobject_id")
         entity = cell.get("entity_id")
         if not cameral and entity is None and oid is None:
-            _fail("MISSING_OBJECT_IDENTITY", fact_id=fact_id)
+            issues.append(_issue("MISSING_OBJECT_IDENTITY", fact_id=fact_id, employee_id=eid,
+                                 full_name=employee["full_name"], date=day))
+            continue
         row_key = (grouping_category, eid, pid, distribution_key(display_row, cell), description)
         row = grouped.setdefault(row_key, dict(employee_id=eid, full_name=employee["full_name"],
             matrix_row_key=display_row.get("row_key"),
@@ -213,6 +327,7 @@ def prepare_data(matrix, positions, categories, confirmed_facts):
         counts["included_"+source] += 1
         sums["included_"+source] += cents
         source_warnings.update(cell.get("warnings", []))
+    _raise_issues(issues)
     for (category, _, _, _, _), row in grouped.items():
         row["total_cents"] = sum(row["days_cents"].values())
         targets[category]["rows"].append(row)

@@ -1,20 +1,58 @@
 /* Actual card/API integration. User/role/CSRF are validated by the server. */
 async function personnelRequest(url,options={}){
+    async function loginRouteAvailable(){
+        if(typeof window==='undefined'||!window.location||window.location.pathname==='/login')return false;
+        try{
+            const probe=await fetch('/login',{method:'HEAD',credentials:'same-origin',cache:'no-store'});
+            return probe.status!==404&&probe.status!==405;
+        }catch{return false;}
+    }
+    async function requestLogin(){
+        if(!(await loginRouteAvailable()))return false;
+        const next=encodeURIComponent(window.location.pathname + window.location.search);
+        window.location.assign('/login?next=' + next);
+        return true;
+    }
     if(options.method&&options.method!=='GET'){
         const base=url.split('/position-transfers')[0]+'/position-transfers';
         const capabilities=await fetch(base+'/capabilities',{credentials:'same-origin',cache:'no-store'});
-        const capability=await capabilities.json();
-        if(!capabilities.ok)throw Object.assign(Error('Кадровая операция недоступна'),{status:capabilities.status});
+        let capability={};
+        try{capability=await capabilities.json();}catch{capability={};}
+        if(!capabilities.ok){
+            if(capabilities.status===401||capabilities.status===403){
+                if(await requestLogin())throw Object.assign(Error('Кадровая операция недоступна'),{status:capabilities.status});
+                throw Object.assign(Error('Кадровые операции недоступны в текущем режиме приложения'),{status:capabilities.status,noAuth:true});
+            }
+            throw Object.assign(Error('Кадровая операция недоступна'),{status:capabilities.status});
+        }
         if(capability.item?.audit_source==='LOCAL_APP'){
             options={...options,headers:{...options.headers,'X-Personnel-Local-Token':capability.item.local_request_token}};
         }else{
-            const me=await fetch('/api/auth/me',{credentials:'same-origin',cache:'no-store'}),identity=await me.json();
-            if(!me.ok)throw Object.assign(Error('Требуется действительная сессия'),{status:me.status});
+            const me=await fetch('/api/auth/me',{credentials:'same-origin',cache:'no-store'});
+            let identity={};
+            try{identity=await me.json();}catch{identity={};}
+            if(!me.ok){
+                if(me.status===401||me.status===403){
+                    if(await requestLogin())throw Object.assign(Error('Требуется действительная сессия'),{status:me.status});
+                    throw Object.assign(Error('Кадровые операции недоступны в текущем режиме приложения'),{status:me.status,noAuth:true});
+                }
+                throw Object.assign(Error('Требуется действительная сессия'),{status:me.status});
+            }
             options={...options,headers:{...options.headers,'X-CSRF-Token':identity.csrf_token}};
         }
     }
-    const response=await fetch(url,options),data=await response.json();
-    if(!response.ok){const error=Error(typeof data.detail==='string'?data.detail:data.message||'Не удалось выполнить кадровую операцию');error.status=response.status;throw error;}
+    const response=await fetch(url,options);
+    let data={};
+    try{data=await response.json();}catch{data={};}
+    if(!response.ok){
+        if(response.status===401||response.status===403){
+            if(await requestLogin()){
+                const error=Error(typeof data.detail==='string'?data.detail:data.message||'Не удалось выполнить кадровую операцию');error.status=response.status;throw error;
+            }
+            const error=Error('Кадровые операции недоступны в текущем режиме приложения');error.status=response.status;error.noAuth=true;throw error;
+        }
+        const error=Error(typeof data.detail==='string'?data.detail:data.message||'Не удалось выполнить кадровую операцию');error.status=response.status;throw error;
+    }
     return data.item;
 }
 function personnelDate(value){return value?value.slice(0,10).split('-').reverse().join('.'):'по настоящее время';}
@@ -80,7 +118,8 @@ async function mountEmployeeTransfers(item,identity,card,valid){
     }catch(error){
         // A legacy server or anonymous page must never gain write authority.
         if(!valid())return;
-        const message=error.status===401?'Для кадровых операций требуется действительная пользовательская сессия'
+        const message=error.noAuth?'Кадровые операции недоступны в текущем режиме приложения'
+            :error.status===401?'Для кадровых операций требуется действительная пользовательская сессия'
             :error.status===403?'Нет доступа к кадровым операциям'
             :error.status===404?'Кадровый модуль недоступен на сервере'
             :'Не удалось проверить доступность кадровых операций: '+error.message;

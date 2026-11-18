@@ -24,6 +24,7 @@ body:has(#vouPage:not([hidden])) .vou-page-title{display:block}
 #vouPage .vou-status[data-state=error]{padding:12px 14px;color:#954b0b;background:#fff6e7;border:1px solid #f5d6a5;border-radius:7px}
 #vouPage .vou-status[data-state=success]{padding:12px 14px;color:#216b4d;background:#edf8f1;border:1px solid #cce8d6;border-radius:7px}
 #vouPage .vou-warning-list{font-size:12px;color:#8b5a16;line-height:1.7;background:#fff9ee;border-radius:7px;padding:12px 16px 12px 32px;margin-bottom:0}
+#vouPage .vou-warning-list[data-state=error]{color:#954b0b;background:#fff6e7;border:1px solid #f5d6a5}
 #vouPage .vou-warning-list:empty{display:none}
 #vouPage .vou-empty{text-align:center;padding:42px 20px;color:#63758a;background:#f8fafd;border:1px dashed #d6e2ef;border-radius:9px;margin-top:16px}
 #vouPage .vou-empty-symbol{display:inline-grid;place-items:center;width:46px;height:46px;background:#eaf1fa;border-radius:12px;color:#6587ae;font-size:24px;margin-bottom:12px}

@@ -118,6 +118,7 @@ def project(data, date_from, date_to):
     for period in periods.values():
         start, end = period['date_from'], period['date_to']
         events = {}
+        assignment_starts = {change['effective_from'] for change in period['changes']}
         for change in period['changes']:
             events[change['effective_from']] = {
                 'basis_kind': 'ASSIGNMENT', 'basis_id': change['id'],
@@ -136,11 +137,18 @@ def project(data, date_from, date_to):
             events[start] = dict(basis_kind='UNKNOWN', basis_id=None, basis_revision=None,
                                  assignment_state='UNKNOWN', items=[])
             dates = sorted(events)
+        assignment_start = None
+        assignment_start_by_day = {}
+        for day in dates:
+            if day in assignment_starts:
+                assignment_start = day
+            assignment_start_by_day[day] = assignment_start
         for index, day in enumerate(dates):
             until = previous_day(dates[index + 1]) if index + 1 < len(dates) else end
             if day > date_to or (until and until < date_from):
                 continue
             intervals.append({**events[day], 'period_key': period['key'],
+                              'assignment_start': assignment_start_by_day[day],
                               'effective_from': day, 'effective_to': until,
                               'visible_from': max(day, date_from),
                               'visible_to': min(until, date_to) if until else date_to,

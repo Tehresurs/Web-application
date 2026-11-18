@@ -9,6 +9,7 @@ from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 from app.repositories.luvr_month import get_header_snapshot
 from app.services.luvr_export import render_month
+from app.services.luvr_export_template import expand_employee_rows
 from app.services.luvr_month import month_calendar
 
 VALUES = {'FULL':1,'HALF':0.5,'TRAVEL':'Д','OFF_SHIFT':'МВ','DOWNTIME':'П','DISMISSED':'Уволен','EMPTY':None}
@@ -24,8 +25,6 @@ def export_table_month(year, month, employee_ids=None):
 def ordered_employees(data, employee_ids, row_keys=None):
     if not data['formed']:raise ValueError('Сначала сформируйте ЛУВР за выбранный месяц.')
     employees=data['employees']
-    if len(employees)>76:
-        raise ValueError(f'В утверждённом шаблоне предусмотрено 76 строк сотрудников. В сформированном ЛУВР: {len(employees)}. Экспорт не выполнен.')
     by_id={e['employee_id']:e for e in employees}
     if row_keys is not None:
         by_row={e.get('row_key') or 'employee:'+str(e['employee_id']):e for e in employees}
@@ -44,8 +43,22 @@ def ordered_employees(data, employee_ids, row_keys=None):
     return employees
 
 
+
+def table_total_row(sheet):
+    headers=[sheet.cell(7,c).value for c in (2,3,5,37,38,39)]
+    totals=[r for r in range(9,sheet.max_row+1) if sheet.cell(r,5).value=='Итого']
+    if headers!=['ФИО','должность','специальность','Итого','Простой','Дорога'] or len(totals)!=1:
+        raise ValueError('Не найдена утверждённая область таблицы MASTER.')
+    return totals[0]
+
 def render_table(snapshot,data,employee_ids=None,template=None,*,row_keys=None):
+    header=render_month(snapshot,template)
+    workbook=load_workbook(BytesIO(header));sheet=workbook.active
+    total_row=table_total_row(sheet)
     employees=ordered_employees(data,employee_ids,row_keys)
+    header=expand_employee_rows(header,total_row,len(employees))
+    workbook=load_workbook(BytesIO(header));sheet=workbook.active
+    total_row=table_total_row(sheet)
     year,month=data['year'],data['month']
     if (snapshot['year'],snapshot['month'])!=(year,month):raise ValueError('Период snapshot не совпадает с месяцем ЛУВР.')
     count=monthrange(year,month)[1]
@@ -61,14 +74,10 @@ def render_table(snapshot,data,employee_ids=None,template=None,*,row_keys=None):
             raise ValueError('Неполный FINAL-календарь ЛУВР. Обновите месяц.')
     grand=[sum(e['totals'][key] for e in employees) for key in TOTAL_KEYS]
     if grand[0]!=sum(daily.values()):raise ValueError('Итоги сотрудников и дневные итоги ЛУВР не совпадают. Экспорт не выполнен.')
-    header=render_month(snapshot,template)
-    workbook=load_workbook(BytesIO(header));sheet=workbook.active
-    if [sheet.cell(7,c).value for c in (2,3,5,37,38,39)]!=['ФИО','должность','специальность','Итого','Простой','Дорога'] or sheet['E85'].value!='Итого':
-        raise ValueError('Не найдена утверждённая область таблицы MASTER.')
-    values={f'{get_column_letter(c)}{r}':None for r in range(9,85) for c in range(1,40)}
+    values={f'{get_column_letter(c)}{r}':None for r in range(9,total_row) for c in range(1,40)}
     for d in range(1,32):
         values[f'{get_column_letter(d+5)}8']=date(year,month,d) if d<=count else None
-        values[f'{get_column_letter(d+5)}85']=daily.get(date(year,month,d)) if d<=count else None
+        values[f'{get_column_letter(d+5)}{total_row}']=daily.get(date(year,month,d)) if d<=count else None
     for r,employee in enumerate(employees,9):
         nrs=employee.get('nrs_number')
         for c,value in enumerate([r-8,employee['full_name'],employee.get('position_name'),nrs if nrs and nrs.strip() else 'Нет',employee['specialty']],1):
@@ -77,7 +86,7 @@ def render_table(snapshot,data,employee_ids=None,template=None,*,row_keys=None):
             when=date.fromisoformat(day['date']) if isinstance(day['date'],str) else day['date']
             values[f'{get_column_letter(when.day+5)}{r}']=VALUES[day['final_code']]
         for c,key in enumerate(TOTAL_KEYS,37):values[f'{get_column_letter(c)}{r}']=employee['totals'][key]
-    for c,value in enumerate(grand,37):values[f'{get_column_letter(c)}85']=value
+    for c,value in enumerate(grand,37):values[f'{get_column_letter(c)}{total_row}']=value
     for address,value in values.items():
         sheet[address].value=value
         if isinstance(value,str):sheet[address].data_type='s'

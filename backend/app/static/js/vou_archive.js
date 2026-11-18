@@ -36,12 +36,20 @@
     const warnings = get('vouWarnings');
     const today = new Date();
     get('vouMonth').value = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}`;
+    function formatWarning(item) {
+        if (item.code==='MISSING_AOS_DESCRIPTION') return `Не заполнено описание работ: ${item.position_name}`;
+        const date = /^\d{4}-\d{2}-\d{2}$/.test(item.date || '') ?
+            `${item.date.slice(8,10)}.${item.date.slice(5,7)}.${item.date.slice(0,4)}` : item.date;
+        const identity = [item.full_name,date].filter(Boolean).join(', ');
+        return `${identity ? `${identity}: ` : ''}${item.message || item.code}`;
+    }
     form.addEventListener('submit', async event => {
         event.preventDefault();
         if (generateButton.disabled || !form.reportValidity()) return;
         const [year,month] = get('vouMonth').value.split('-').map(Number);
         generateButton.disabled = true;
         warnings.replaceChildren();
+        delete warnings.dataset.state;
         generationStatus.dataset.state='loading';
         generationStatus.textContent = 'Формирование и проверка в Microsoft Excel… Дождитесь завершения.';
         try {
@@ -49,6 +57,17 @@
             const body = await response.json();
             if (!response.ok) {
                 const detail = body.detail;
+                if (Array.isArray(detail?.errors) && detail.errors.length) {
+                    generationStatus.dataset.state='error';
+                    generationStatus.textContent = `${detail.message || 'Данные ВОУ требуют проверки'} Найдено ошибок: ${detail.errors.length}.`;
+                    warnings.dataset.state='error';
+                    for (const item of detail.errors) {
+                        const li = document.createElement('li');
+                        li.textContent = item.message || item.code || 'Ошибка проверки данных ВОУ';
+                        warnings.append(li);
+                    }
+                    return;
+                }
                 throw new Error(typeof detail==='string' ? detail : (detail?.message || 'Не удалось сформировать Отчет ВОУ'));
             }
             generationStatus.dataset.state='success';
@@ -59,8 +78,7 @@
             generationStatus.append(link);
             for (const item of body.warnings || []) {
                 const li = document.createElement('li');
-                li.textContent = item.code==='MISSING_AOS_DESCRIPTION' ?
-                    `Не заполнено описание работ: ${item.position_name}` : (item.message || item.code);
+                li.textContent = formatWarning(item);
                 warnings.append(li);
             }
             await load();

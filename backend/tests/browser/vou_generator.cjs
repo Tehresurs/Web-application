@@ -36,8 +36,29 @@ const assert=require('node:assert/strict');
   assert.ok(message.includes('Заполните реквизиты'),message);
   const countAfter=(await ev(`fetch('/api/vou/reports').then(r=>r.json())`)).items.length;
   assert.equal(countAfter,countBefore);
+  await ev(`window.__nativeFetch=window.fetch;window.fetch=(url,options)=>{
+    if(url==='/api/vou/reports'&&options&&options.method==='POST'){
+      return Promise.resolve(new Response(JSON.stringify({detail:{
+        message:'Данные ВОУ требуют проверки',
+        errors:[
+          {code:'POSITION_ORDER_NOT_AGREED',message:'Иванов Иван, 04.10.2026: должность «Инженер СК» не согласована для раздела 1 ВОУ.'},
+          {code:'POSITION_ORDER_NOT_AGREED',message:'Петров Пётр, 05.10.2026: должность «Инженер СК» не согласована для раздела 1 ВОУ.'}
+        ]
+      }}),{status:409,headers:{'Content-Type':'application/json'}}));
+    }
+    return window.__nativeFetch(url,options);
+  }`);
+  await ev(`document.getElementById('vouGenerate').click()`);
+  await wait(`!document.getElementById('vouGenerate').disabled`);
+  const errorSummary=await ev(`document.getElementById('vouGenerateStatus').textContent`);
+  const errorDetails=await ev(`document.getElementById('vouWarnings').textContent`);
+  assert.ok(errorSummary.includes('Найдено ошибок: 2'),errorSummary);
+  assert.ok(errorDetails.includes('Иванов Иван, 04.10.2026'),errorDetails);
+  assert.ok(errorDetails.includes('Петров Пётр, 05.10.2026'),errorDetails);
+  assert.equal(await ev(`document.getElementById('vouWarnings').dataset.state`),'error');
   assert.equal(errors.length,0,JSON.stringify(errors));
-  console.log(JSON.stringify({generationButton:true,missingSettingsWarning:message,archiveUnchanged:true}));
+  console.log(JSON.stringify({generationButton:true,missingSettingsWarning:message,
+    displayedErrorCount:2,displayedEmployeeDates:true,archiveUnchanged:true}));
   assert.equal(errors.length,0,JSON.stringify(errors));
   console.log(JSON.stringify({archiveVisible:true,settingsVisible:true,archiveReports:archive.items.length,jsErrors:errors.length,noDatabaseWrites:true}));
  } finally {ws.close();await fetch(cdp+'/json/close/'+page.id);}

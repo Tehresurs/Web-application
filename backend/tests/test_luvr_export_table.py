@@ -80,9 +80,12 @@ class ExportTableTests(unittest.TestCase):
     def test_fallback_retains_existing_order_no_sort(self):
         data=data_set();data['employees'].reverse();self.assertEqual(book(data)['B9'].value,'Сотрудник 1')
 
-    def test_capacity_77_blocks_without_changing_master(self):
+    def test_more_than_template_capacity_expands_rows_without_changing_master(self):
         before=sha256(DEFAULT_TEMPLATE.read_bytes()).hexdigest()
-        with self.assertRaisesRegex(ValueError,'76.*77'):book(data_set(77))
+        sheet=book(data_set(77))
+        self.assertEqual(sheet['A85'].value,77)
+        self.assertEqual(sheet['B85'].value,'Сотрудник 76')
+        self.assertEqual(sheet['E86'].value,'Итого')
         self.assertEqual(before,sha256(DEFAULT_TEMPLATE.read_bytes()).hexdigest())
         self.assertEqual(book(data_set(76))['A84'].value,76)
 

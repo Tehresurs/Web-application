@@ -3,7 +3,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel,Field,ConfigDict
 from app.services.vou_report import generate
 from app.services.vou_excel_com import ExcelComError
-from app.services.vou_data import VouDataError
+from app.services.vou_data import VouDataError, describe_vou_issue
 from app.services.vou_archive import VouArchive
 
 router=APIRouter(prefix='/api/vou/reports',tags=['Архив Отчета ВОУ'])
@@ -49,7 +49,10 @@ def generate_report(body:GenerateRequest):
         result=generate(body.year,body.month)
         return {'status':'ok',**result}
     except VouDataError as exc:
-        raise HTTPException(409,{'message':'Данные ВОУ требуют проверки','code':exc.code,'details':exc.details}) from exc
+        errors = [dict(code=issue['code'], details=issue['details'],
+                       message=describe_vou_issue(issue)) for issue in exc.issues]
+        raise HTTPException(409,{'message':'Данные ВОУ требуют проверки','code':exc.code,
+                                 'details':exc.details,'errors':errors}) from exc
     except ValueError as exc:
         raise HTTPException(409,str(exc)) from exc
     except ExcelComError as exc:

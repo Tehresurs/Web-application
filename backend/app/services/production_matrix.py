@@ -69,7 +69,7 @@ def employee_matrix(employee, names, year, month):
         periods = [] if cameral_position or (acting_non_reporting and day not in facts) else [p for p in assignments['periods'] if _contains(p,day)]
         if employee.get('return_plan_required') and day not in facts:
             boundary=employee['return_plan_from'].isoformat()
-            periods=[p for p in periods if p['basis_kind']=='ASSIGNMENT' and p['effective_from']>boundary]
+            periods=[p for p in periods if p.get('assignment_start') and p['assignment_start']>boundary]
         if len(periods)>1:
             issue('OVERLAPPING_ASSIGNMENT_PERIODS','CONFLICT')
         period = periods[0] if len(periods)==1 else None
@@ -177,6 +177,12 @@ def employee_matrix(employee, names, year, month):
                         entry.get('po_id'),entry.get('subcontractor_id'))
             if entry.get('entity_id') is not None:
                 identity=(entry['kind'],'entity',entry['entity_id'],entry.get('po_id'),entry.get('subcontractor_id'))
+            # Approved acting head-of-SK lane. Keep facts and their category,
+            # share and provenance intact; only automatic cameral PLAN is 6.4.
+            if acting and acting['position_id']==21 and entry['kind']=='CAMERAL':
+                entry.update(basis_id=21,report_section='6',report_subsection='6.4',
+                             row_label=entry['position_name']+' — 6.4 «Прочие»')
+                identity=(*identity,'acting',str(acting['root_id']))
             # Group display rows across dates, not source records. Preserve a
             # separate lane for simultaneous equal identities: never overwrite
             # a fact/correction target or sum away its provenance.
@@ -185,6 +191,10 @@ def employee_matrix(employee, names, year, month):
             key = ':'.join(str(value) for value in (employee['employee_id'],*identity,occurrence))
             row = rows.setdefault(key,dict(row_key=key,kind=entry['kind'],object_id=entry['object_id'],
                 object_name=entry['object_name'],source=source,cells={},total_cents=0))
+            if entry.get('report_subsection')=='6.4':
+                row.update(report_section='6',report_subsection='6.4',
+                           position_id=entry['position_id'],acting_root_id=entry['acting_root_id'],
+                           row_label=entry['row_label'])
             row['cells'][day] = entry
             if entry.get('entity_id') is not None:
                 row.update({k:entry[k] for k in ('entity_id','parent_entity_id','current_hierarchy','subobject_name')})

@@ -103,7 +103,7 @@ function initProductionMatrix(options={}){
         for(const label of ['ПО','Объект / подобъект','Категория','Режим контроля','Субподрядчик',...dates.map(d=>d.slice(-2)),'Итого'])hr.append(el('th',label));
         head.append(hr);t.append(head);const body=el('tbody');
         for(const row of employee.rows){const tr=el('tr',null,row.kind==='CAMERAL'?'pm-cameral':'');tr.dataset.rowKey=row.row_key;const first=Object.values(row.cells)[0];
-            const poCell=el('td');poCell.append(editor(employee,row,'PO'));tr.append(poCell,el('td',row.kind==='CAMERAL'?'Камеральная работа':[first.object_name,first.subobject_name].filter(Boolean).join(' / ')));
+            const poCell=el('td');poCell.append(editor(employee,row,'PO'));tr.append(poCell,el('td',row.kind==='CAMERAL'?(row.row_label||'Камеральная работа'):[first.object_name,first.subobject_name].filter(Boolean).join(' / ')));
             for(const field of ['CATEGORY','CONTROL_MODE']){const td=el('td');td.append(editor(employee,row,field));tr.append(td);}
             tr.append(el('td',first.subcontractor_name||'—'));
             for(const day of dates){const td=el('td'),cell=row.cells[day];if(cell){const b=button(cell.is_dk?'0 ДК':`${pmAmount(cell.share_cents)} ${cell.source==='FACT'?'Ф':'Пл'}`,()=>choose(employee,day,row.row_key),`pm-cell pm-source-${cell.source} pm-check-${cell.status}${cell.is_dk?' pm-dk':''}`);b.dataset.date=day;b.title=`${day} · ${cell.source==='FACT'?'Подтверждённый факт':'План'} · ${PM_STATUS[cell.status]}${cell.is_dk?' · Проведен ДК':''}`;b.setAttribute('aria-pressed',String(selected?.rowKey===row.row_key&&selected.date===day));td.append(b);}else td.textContent='—';tr.append(td);}
@@ -173,7 +173,7 @@ function initProductionMatrix(options={}){
 
         const cells=employee.rows.map(r=>({row:r,cell:r.cells[selected.date]})).filter(x=>x.cell);
         if(!cells.length)details.append(el('p',check.available_cents?'Назначение неизвестно или отсутствует.':'На эту дату производственных строк нет.'));
-        for(const {row,cell} of cells){const card=el('section',null,'pm-detail-card');card.append(el('strong',cell.source==='FACT'?'Подтверждённый факт':'План'),el('p',cell.kind==='CAMERAL'?'Камеральный контроль':[cell.po_name,cell.object_name,cell.subobject_name].filter(Boolean).join(' → ')),
+        for(const {row,cell} of cells){const card=el('section',null,'pm-detail-card');card.append(el('strong',cell.source==='FACT'?'Подтверждённый факт':'План'),el('p',cell.kind==='CAMERAL'?(cell.row_label||'Камеральный контроль'):[cell.po_name,cell.object_name,cell.subobject_name].filter(Boolean).join(' → ')),
             el('p',`Категория: ${cell.category_name||'—'}`),el('p',`Режим: ${PM_MODES[cell.control_mode]||'Не выбран'}`),el('p',`Субподрядчик: ${cell.subcontractor_name||'—'}`),el('p',cell.is_dk?'0 ДК · Проведен ДК':`Доля времени: ${pmAmount(cell.share_cents)}`));
             if(cell.source==='FACT' && cell.luvr_final_code==='TRAVEL')card.append(el('p','Отчёт сохранён в истории, но к учёту не принят: в ЛУВР «Д», рабочее время 0.','pm-note'));
             if(cell.source==='FACT' && cell.source_fact_id)card.append(button('Проверить источник',()=>matrixReportSource(cell,card),'secondary-button'));

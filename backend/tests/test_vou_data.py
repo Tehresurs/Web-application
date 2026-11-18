@@ -1,7 +1,7 @@
 """B2 projection tests: input shares are already calculated by the matrix."""
 from copy import deepcopy
 import unittest
-from app.services.vou_data import prepare_data, select_matrix_cells, VouDataError
+from app.services.vou_data import prepare_data, select_matrix_cells, VouDataError, describe_vou_issue
 
 
 def catalogs():
@@ -113,6 +113,29 @@ class VouDataTests(unittest.TestCase):
     def test_unagreed_position_order_blocks_real_case(self):
         with self.assertRaises(VouDataError) as e:prepare_data(*inputs([cell(category=4)],pid=10))
         self.assertEqual(e.exception.code,"POSITION_ORDER_NOT_AGREED")
+
+    def test_all_unagreed_position_rows_are_reported_with_employee_and_date(self):
+        args=inputs([cell(category=4),cell(fid=2,day="2026-10-02",category=4)],pid=10)
+        with self.assertRaises(VouDataError) as error:prepare_data(*args)
+        issues=error.exception.issues
+        self.assertEqual([issue["code"] for issue in issues],
+                         ["POSITION_ORDER_NOT_AGREED","POSITION_ORDER_NOT_AGREED"])
+        messages=[describe_vou_issue(issue) for issue in issues]
+        self.assertIn("Иванов Иван, 01.10.2026",messages[0])
+        self.assertIn("Должность 10",messages[0])
+        self.assertIn("раздела 4 ВОУ",messages[0])
+        self.assertIn("Иванов Иван, 02.10.2026",messages[1])
+
+    def test_all_matrix_cell_errors_are_reported_together(self):
+        args=list(inputs([cell(),cell(fid=2,day="2026-10-02")]))
+        args[0]["employees"][0]["rows"][0]["cells"]["2026-10-01"]["share_cents"]=-1
+        args[0]["employees"][0]["rows"][1]["cells"]["2026-10-02"]["source"]="UNKNOWN"
+        with self.assertRaises(VouDataError) as error:prepare_data(*args)
+        self.assertEqual([issue["code"] for issue in error.exception.issues],
+                         ["INVALID_MATRIX_SHARE","UNKNOWN_MATRIX_SOURCE"])
+        messages=[describe_vou_issue(issue) for issue in error.exception.issues]
+        self.assertIn("Иванов Иван, 01.10.2026",messages[0])
+        self.assertIn("Иванов Иван, 02.10.2026",messages[1])
 
     def test_position_order_fio_and_employee_objects_stay_together(self):
         args=list(inputs([cell(obj=2),cell(fid=2,day="2026-10-02",obj=3)]))
@@ -235,11 +258,36 @@ class VouConnectionTests(unittest.TestCase):
             self.assertTrue(any('personnel_position_definitions' in call.args[0] for call in cur.execute.call_args_list))
 
 
+class VouErrorResponseTests(unittest.TestCase):
+    def test_generation_response_includes_formatted_error_list(self):
+        from unittest.mock import patch
+        from fastapi import HTTPException
+        from app.api.vou_archive import GenerateRequest, generate_report
+        issues=[
+            dict(code="POSITION_ORDER_NOT_AGREED",details=dict(
+                full_name="Иванов Иван",date="2026-10-04",position_id=10,
+                position_name="Инженер СК",category_id=1,subsection="1")),
+            dict(code="POSITION_ORDER_NOT_AGREED",details=dict(
+                full_name="Петров Пётр",date="2026-10-05",position_id=10,
+                position_name="Инженер СК",category_id=1,subsection="1")),
+        ]
+        error=VouDataError(issues[0]["code"],issues=issues,**issues[0]["details"])
+        with patch("app.api.vou_archive.generate",side_effect=error):
+            with self.assertRaises(HTTPException) as raised:
+                generate_report(GenerateRequest(year=2026,month=10))
+        self.assertEqual(raised.exception.status_code,409)
+        detail=raised.exception.detail
+        self.assertEqual(len(detail["errors"]),2)
+        self.assertIn("Иванов Иван, 04.10.2026",detail["errors"][0]["message"])
+        self.assertIn("Инженер СК",detail["errors"][0]["message"])
+        self.assertIn("Петров Пётр, 05.10.2026",detail["errors"][1]["message"])
+
+
 class ApprovedSubsectionOrderTests(unittest.TestCase):
     def test_existing_order_is_unchanged_and_additions_are_scoped(self):
         from app.services.vou_data import position_order, OTHER_POSITION_ORDER, MAIN_POSITION_ORDER
         self.assertEqual(position_order('6.2'), OTHER_POSITION_ORDER + (3,))
-        self.assertEqual(position_order('6.4'), OTHER_POSITION_ORDER + (6,8,14,20))
+        self.assertEqual(position_order('6.4'), OTHER_POSITION_ORDER + (6,8,14,20,21))
         self.assertEqual(position_order('6.1'), OTHER_POSITION_ORDER)
         self.assertEqual(position_order('6.3'), OTHER_POSITION_ORDER)
         self.assertEqual(position_order('1'), MAIN_POSITION_ORDER)
@@ -251,8 +299,8 @@ class ApprovedSubsectionOrderTests(unittest.TestCase):
     def test_additional_positions_keep_values_and_sort_by_position_then_fio(self):
         matrix=dict(year=2026,month=10,formed=True,employees=[])
         positions,categories=catalogs()
-        for pid in (6,8,14,20):positions.append(dict(id=pid,name=f'Должность {pid}',aos_description=None))
-        for eid,(pid,fio) in enumerate([(20,'Яковлев'),(14,'Иванов'),(8,'Петров'),(6,'Яковлев'),(6,'Андреев'),(11,'Сидоров'),(3,'Борисов')],1):
+        for pid in (6,8,14,20,21):positions.append(dict(id=pid,name=f'Должность {pid}',aos_description=None))
+        for eid,(pid,fio) in enumerate([(20,'Яковлев'),(14,'Иванов'),(8,'Петров'),(6,'Яковлев'),(6,'Андреев'),(11,'Сидоров'),(3,'Борисов'),(21,'Смирнов')],1):
             c=cell(category=8 if pid==3 else None)
             c.update(employee_id=eid,source='PLAN',report_received=False,assignment_item_id=eid)
             if pid!=3:c.update(kind='CAMERAL',object_id=None,object_name=None)
@@ -263,7 +311,7 @@ class ApprovedSubsectionOrderTests(unittest.TestCase):
         subs=result['sections'][5]['subsections']
         self.assertEqual(subs[1]['total_cents'],100)
         self.assertEqual([r['position_id'] for r in subs[1]['rows']],[3])
-        self.assertEqual([r['position_id'] for r in subs[3]['rows']],[11,6,6,8,14,20])
+        self.assertEqual([r['position_id'] for r in subs[3]['rows']],[11,6,6,8,14,20,21])
         self.assertEqual([r['full_name'] for r in subs[3]['rows'] if r['position_id']==6],['Андреев','Яковлев'])
-        self.assertEqual(result['total_cents'],700)
+        self.assertEqual(result['total_cents'],800)
         self.assertEqual((matrix,positions,categories),before)
